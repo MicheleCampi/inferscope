@@ -1,0 +1,22 @@
+[package]
+name = "inferscope"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+description = "Profiling and observability tool for LLM inference engines"
+
+[[bin]]
+name = "inferscope"
+path = "src/main.rs"
+
+[dependencies]
+is-core = { path = "../is-core" }
+is-probe = { path = "../is-probe" }
+is-sysmon = { path = "../is-sysmon" }
+is-report = { path = "../is-report" }
+clap.workspace = true
+tokio.workspace = true
+thiserror.workspace = true

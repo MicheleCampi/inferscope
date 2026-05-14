@@ -1,0 +1,17 @@
+[package]
+name = "is-probe"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+description = "Probe client for inferscope: drives an OpenAI-compatible endpoint and captures token timing"
+
+[dependencies]
+is-core = { path = "../is-core" }
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+tokio.workspace = true
+reqwest.workspace = true

@@ -1,0 +1,25 @@
+[workspace]
+resolver = "2"
+members = [
+    "crates/is-core",
+    "crates/is-probe",
+    "crates/is-sysmon",
+    "crates/is-report",
+    "crates/inferscope",
+]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.83"
+license = "Apache-2.0"
+repository = "https://github.com/MicheleCampi/inferscope"
+authors = ["Michele Campi"]
+
+[workspace.dependencies]
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+thiserror = "2"
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "time", "sync"] }
+reqwest = { version = "0.12", features = ["json", "stream"] }
+clap = { version = "4", features = ["derive"] }

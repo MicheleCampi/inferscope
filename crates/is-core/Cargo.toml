@@ -1,0 +1,13 @@
+[package]
+name = "is-core"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+description = "Core types for inferscope: metrics, report structures, errors"
+
+[dependencies]
+serde.workspace = true
+thiserror.workspace = true

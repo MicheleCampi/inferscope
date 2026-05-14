@@ -1,0 +1,15 @@
+[package]
+name = "is-report"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+description = "Report generation for inferscope: renders metrics as structured text and JSON"
+
+[dependencies]
+is-core = { path = "../is-core" }
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true

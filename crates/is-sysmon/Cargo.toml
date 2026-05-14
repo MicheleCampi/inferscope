@@ -1,0 +1,13 @@
+[package]
+name = "is-sysmon"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+description = "System monitor for inferscope: samples engine process resource usage from /proc"
+
+[dependencies]
+is-core = { path = "../is-core" }
+thiserror.workspace = true
