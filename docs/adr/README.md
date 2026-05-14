@@ -1,0 +1,29 @@
+# Architecture Decision Records
+
+This directory records the significant architectural decisions made
+on inferscope: the context that motivated each one, the decision
+itself, the alternatives considered, and the consequences.
+
+ADRs are **immutable once accepted**. If a decision is later
+reversed, a new ADR is added that supersedes the old one; the old
+ADR's status is updated to point at its successor, but its text is
+left intact as a historical record.
+
+## Index
+
+| ID | Title | Status |
+|----|-------|--------|
+| [ADR-001](001-profiling-scope.md) | Profiling Scope for v0.1.0 | Accepted |
+
+## Format
+
+ADRs follow the structure proposed by Michael Nygard in
+[Documenting Architecture Decisions](https://cognitect.com/blog/2011/11/15/documenting-architecture-decisions):
+
+- **Status** — Proposed / Accepted / Deprecated / Superseded
+- **Context** — the situation that requires a decision
+- **Decision** — what was decided
+- **Consequences** — positive and negative outcomes
+- **Alternatives Considered** — what was not chosen, and why
+
+New ADRs are numbered sequentially (`002-...`, `003-...`).
