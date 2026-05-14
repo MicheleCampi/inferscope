@@ -14,6 +14,7 @@ left intact as a historical record.
 | ID | Title | Status |
 |----|-------|--------|
 | [ADR-001](001-profiling-scope.md) | Profiling Scope for v0.1.0 | Accepted |
+| [ADR-002](002-token-timing-representation.md) | Token Timing Representation | Accepted |
 
 ## Format
 
