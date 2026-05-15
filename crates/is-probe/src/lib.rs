@@ -15,6 +15,7 @@
 //!   to a measured [`is_core::RequestTiming`]. (Lands later in W2.)
 
 pub mod config;
+pub mod decoder;
 pub mod error;
 pub mod wire;
 
