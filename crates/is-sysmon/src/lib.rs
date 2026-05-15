@@ -19,6 +19,7 @@
 pub mod config;
 pub mod error;
 pub mod parse;
+pub mod sampler;
 
 pub use config::SysmonConfig;
 pub use error::SysmonError;

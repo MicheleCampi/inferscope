@@ -11,3 +11,4 @@ description = "System monitor for inferscope: samples engine process resource us
 [dependencies]
 is-core = { path = "../is-core" }
 thiserror.workspace = true
+tokio.workspace = true
