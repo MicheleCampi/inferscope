@@ -785,6 +785,7 @@ name = "is-report"
 version = "0.1.0"
 dependencies = [
  "is-core",
+ "libc",
  "serde",
  "serde_json",
  "thiserror",

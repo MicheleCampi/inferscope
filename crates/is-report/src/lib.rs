@@ -14,12 +14,14 @@
 //! - [`error`]: the failure modes that can occur during derivation.
 //! - [`metrics`]: the derived metric types — timing, resource, and
 //!   the combined [`metrics::Report`].
-//! - `derive`: the functions that compute metrics from the raw
-//!   signals. (Lands later in W4.)
+//! - [`derive`]: the functions that compute metrics from the raw
+//!   signals.
 //! - `render`: text and JSON rendering. (Lands later in W4.)
 
+pub mod derive;
 pub mod error;
 pub mod metrics;
 
+pub use derive::{derive_resource, derive_timing};
 pub use error::ReportError;
 pub use metrics::{LatencyDistribution, Report, ResourceMetrics, TimingMetrics};
