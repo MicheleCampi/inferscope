@@ -748,6 +748,7 @@ dependencies = [
  "is-probe",
  "is-report",
  "is-sysmon",
+ "serde_json",
  "thiserror",
  "tokio",
 ]

@@ -20,3 +20,4 @@ is-report = { path = "../is-report" }
 clap.workspace = true
 tokio.workspace = true
 thiserror.workspace = true
+serde_json.workspace = true
