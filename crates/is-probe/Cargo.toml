@@ -17,4 +17,5 @@ tokio.workspace = true
 reqwest.workspace = true
 
 [dev-dependencies]
+wiremock = "=0.6.2"
 serde_json.workspace = true

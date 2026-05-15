@@ -18,6 +18,7 @@ pub mod config;
 pub mod decoder;
 pub mod error;
 pub mod extract;
+pub mod runner;
 pub mod wire;
 
 pub use config::ProbeConfig;
