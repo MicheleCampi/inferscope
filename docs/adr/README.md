@@ -16,6 +16,7 @@ left intact as a historical record.
 | [ADR-001](001-profiling-scope.md) | Profiling Scope for v0.1.0 | Accepted |
 | [ADR-002](002-token-timing-representation.md) | Token Timing Representation | Accepted |
 | [ADR-003](003-sysmon-scope-and-correlation.md) | sysmon Scope and Temporal Correlation | Accepted |
+| [ADR-004](004-report-metrics-and-format.md) | Report Metrics and Output Format | Accepted |
 
 ## Format
 
