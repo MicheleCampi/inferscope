@@ -16,12 +16,14 @@
 //!   the combined [`metrics::Report`].
 //! - [`derive`]: the functions that compute metrics from the raw
 //!   signals.
-//! - `render`: text and JSON rendering. (Lands later in W4.)
+//! - [`render`]: text and JSON rendering of a report.
 
 pub mod derive;
 pub mod error;
 pub mod metrics;
+pub mod render;
 
 pub use derive::{derive_resource, derive_timing};
 pub use error::ReportError;
 pub use metrics::{LatencyDistribution, Report, ResourceMetrics, TimingMetrics};
+pub use render::{render_json, render_text};
