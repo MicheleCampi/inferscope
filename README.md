@@ -40,6 +40,41 @@ For each request sent to an engine, inferscope captures:
 The output is a structured report (text and JSON) that aggregates
 these across a run.
 
+## Quick example
+
+Profiling a local llama.cpp server running Qwen 2.5 0.5B Q4 on a
+4-vCPU AMD EPYC VM:
+
+```
+$ inferscope \
+    --endpoint http://127.0.0.1:8080 \
+    --model qwen \
+    --prompt "Write three short sentences about Italian coffee." \
+    --max-tokens 80 \
+    --pid 3319
+
+Probe summary
+  Tokens generated      80
+  Time to first token   25 ms
+  Generation rate       82.7 tokens/s
+  Total latency         981 ms
+
+Inter-token latency (from 79 intervals)
+  mean      12 ms      max       15 ms
+  p50       12 ms      p95       14 ms
+  p99       15 ms
+
+Process resource usage (21 samples)
+  RSS                peak 588 MiB  mean 588 MiB
+                     min  588 MiB  final 588 MiB
+  CPU utilization    mean 371%
+  Threads            14 throughout
+```
+
+The same run with `--json` produces a single document carrying both
+the raw per-token timestamps and the derived metrics, so a consumer
+can recompute differently without re-running the probe.
+
 ## Scope
 
 v0.1.0 is built on **API-level profiling**: the engine is treated
@@ -52,6 +87,12 @@ to specific phases like KV cache management or attention
 computation — is the direction for v0.2 and beyond. The reasoning
 behind this sequencing is recorded in
 [ADR-001](docs/adr/001-profiling-scope.md).
+
+**GPU resource monitoring** (NVML, ROCm SMI) is also v0.2+: the
+timing portion of inferscope is engine-agnostic and works against
+GPU engines today, but the resource portion currently reads
+/proc only and so describes the CPU-side process. See
+[ADR-003](docs/adr/003-sysmon-scope-and-correlation.md).
 
 ## Architecture
 
@@ -70,6 +111,10 @@ Every crate depends on `is-core` for shared vocabulary. `is-core`
 itself depends on nothing with a runtime, so the data definitions
 stay free of I/O concerns.
 
+The full set of design decisions — scope, timing representation,
+sysmon scope, report metrics and output format — is recorded in
+[`docs/adr/`](docs/adr/).
+
 ## Building
 
 inferscope pins a minimum supported Rust version of 1.83 via
@@ -77,14 +122,18 @@ inferscope pins a minimum supported Rust version of 1.83 via
 
     git clone https://github.com/MicheleCampi/inferscope.git
     cd inferscope
-    cargo build --workspace
+    cargo build --release --workspace
+
+The CLI binary lands at `target/release/inferscope`. Run
+`inferscope --help` for the full argument list.
 
 ## Roadmap
 
 - **v0.1.0** — API-level profiling: token timing, resource
   footprint correlation, text and JSON reports, CLI.
-- **v0.2+** — engine-internal instrumentation: phase-level
-  attribution of time and memory.
+- **v0.2+** — engine-internal instrumentation (phase-level
+  attribution of time and memory) and GPU resource monitoring
+  (NVML / ROCm SMI).
 
 ## License
 
