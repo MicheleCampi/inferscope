@@ -16,6 +16,7 @@
 
 pub mod config;
 pub mod error;
+pub mod wire;
 
 pub use config::ProbeConfig;
 pub use error::ProbeError;
