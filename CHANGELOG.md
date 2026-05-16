@@ -35,6 +35,11 @@ The first public release of inferscope.
   on a multi-thread tokio runtime, shares one reference instant
   between the two so samples and token arrivals are correlated
   by direct numeric comparison.
+- **Pre-flight `--pid` validation.** When `--pid` is supplied,
+  the orchestrator verifies that `/proc/<pid>` exists before
+  starting the probe. An invalid PID fails fast with a clear
+  error and a non-zero exit code; no request is sent to the
+  engine.
 - **Five-crate Cargo workspace** with strict separation of
   concerns: `is-core` (pure data types), `is-probe` (network
   I/O), `is-sysmon` (filesystem I/O), `is-report` (pure
@@ -66,10 +71,12 @@ The first public release of inferscope.
   scheduler tick, per-sample CPU rate is dominated by
   quantisation noise. v0.1.0 reports the mean only. See
   [ADR-004](docs/adr/004-report-metrics-and-format.md).
-- **PID validity is not enforced.** The CLI accepts a `--pid`
-  argument and trusts it. If the supplied PID does not
-  correspond to the engine process, sysmon will sample whatever
-  it does correspond to. A user must ensure the PID is correct.
+- **PID identity is not verified.** The CLI checks that the
+  supplied `--pid` corresponds to a live process before starting
+  a run, but does not verify that the process is in fact the
+  intended inference engine. If the user passes the PID of an
+  unrelated process, sysmon will faithfully sample that process.
+  A user must still ensure the PID is the right one.
 
 [Unreleased]: https://github.com/MicheleCampi/inferscope/compare/v0.1.0...HEAD
 [0.1.0]: https://github.com/MicheleCampi/inferscope/releases/tag/v0.1.0
