@@ -52,6 +52,20 @@ async fn orchestrate(args: Args) -> Result<(), String> {
     // so both produce elapsed_ns from the same origin.
     let start = Instant::now();
 
+    // Validate the PID early: if the user passed --pid pointing
+    // to a process that does not exist, fail before doing any
+    // network I/O. /proc/<pid> existence is the canonical Linux
+    // check; we accept a small TOCTOU window (process can die
+    // between this check and the first sample) — sysmon already
+    // handles a vanishing process gracefully during sampling.
+    if let Some(pid) = args.pid {
+        if !std::path::Path::new(&format!("/proc/{pid}")).exists() {
+            return Err(format!(
+                "process with pid {pid} does not exist (no /proc/{pid})"
+            ));
+        }
+    }
+
     let probe_cfg = ProbeConfig::new(
         args.endpoint.clone(),
         args.model.clone(),
