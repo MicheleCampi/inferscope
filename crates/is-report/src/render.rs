@@ -173,7 +173,7 @@ fn format_bytes(bytes: u64) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use is_core::{RequestTiming, ResourceSample, ResourceTimeline, TokenArrival};
+    use is_core::{RequestTiming, ResourceTimeline, TokenArrival};
 
     fn sample_report() -> Report {
         Report {
