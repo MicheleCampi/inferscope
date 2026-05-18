@@ -87,6 +87,8 @@ pub struct Report {
     pub request_timing: RequestTiming,
     /// The raw resource timeline as captured by the sysmon, if any.
     pub resource_timeline: Option<ResourceTimeline>,
+    /// The raw GPU timeline as captured by the GPU sampler, if any.
+    pub gpu_timeline: Option<is_core::GpuTimeline>,
     /// Derived timing metrics.
     pub timing: TimingMetrics,
     /// Derived resource metrics, if a resource timeline was available.
@@ -117,6 +119,7 @@ mod tests {
                 }],
                 sample_period_ns: 50_000_000,
             }),
+            gpu_timeline: None,
             timing: TimingMetrics {
                 token_count: 2,
                 ttft_ns: Some(412_000_000),
@@ -167,6 +170,7 @@ mod tests {
         let original = Report {
             request_timing: RequestTiming::new(vec![], 0),
             resource_timeline: None,
+            gpu_timeline: None,
             timing: TimingMetrics {
                 token_count: 0,
                 ttft_ns: None,

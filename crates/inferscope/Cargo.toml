@@ -21,3 +21,8 @@ clap.workspace = true
 tokio.workspace = true
 thiserror.workspace = true
 serde_json.workspace = true
+
+[features]
+default = []
+gpu-nvidia = ["is-sysmon/gpu-nvidia"]
+gpu-amd = ["is-sysmon/gpu-amd"]

@@ -3,7 +3,8 @@
 //! The CLI surface is intentionally small. The flags map directly
 //! to fields of `ProbeConfig` and `SysmonConfig`, with one
 //! orchestrator-level flag (`--pid`) and one output flag
-//! (`--json`).
+//! (`--json`). When the `gpu-nvidia` Cargo feature is enabled,
+//! an additional `--gpu` flag becomes available.
 
 use std::time::Duration;
 
@@ -53,6 +54,19 @@ pub struct Args {
     /// not set.
     #[arg(long, default_value_t = 50)]
     pub sample_period_ms: u64,
+
+    /// Sample GPU resources via NVML in parallel with the probe.
+    ///
+    /// When supplied, inferscope initialises NVML and samples
+    /// every visible NVIDIA GPU at the same cadence as the /proc
+    /// sampler. If NVML cannot be loaded (no driver), the run
+    /// continues without GPU data and notes the absence in the
+    /// report. Per ADR-005.
+    ///
+    /// Only available when built with `--features gpu-nvidia`.
+    #[cfg(feature = "gpu-nvidia")]
+    #[arg(long, default_value_t = false)]
+    pub gpu: bool,
 
     /// Emit the report as JSON instead of plain text.
     ///
@@ -134,5 +148,42 @@ mod tests {
     fn missing_required_endpoint_fails() {
         let result = Args::try_parse_from(["inferscope", "--model", "llama3", "--prompt", "hi"]);
         assert!(result.is_err());
+    }
+
+    /// With the `gpu-nvidia` feature enabled, `--gpu` is a valid
+    /// flag and defaults to false.
+    #[cfg(feature = "gpu-nvidia")]
+    #[test]
+    fn gpu_flag_defaults_to_false_when_feature_enabled() {
+        let args = Args::try_parse_from([
+            "inferscope",
+            "--endpoint",
+            "http://localhost:8080",
+            "--model",
+            "llama3",
+            "--prompt",
+            "hi",
+        ])
+        .expect("args should parse without --gpu");
+        assert!(!args.gpu);
+    }
+
+    /// With the `gpu-nvidia` feature enabled, `--gpu` flips the
+    /// flag to true.
+    #[cfg(feature = "gpu-nvidia")]
+    #[test]
+    fn gpu_flag_parses_when_supplied() {
+        let args = Args::try_parse_from([
+            "inferscope",
+            "--endpoint",
+            "http://localhost:8080",
+            "--model",
+            "llama3",
+            "--prompt",
+            "hi",
+            "--gpu",
+        ])
+        .expect("args should parse with --gpu");
+        assert!(args.gpu);
     }
 }

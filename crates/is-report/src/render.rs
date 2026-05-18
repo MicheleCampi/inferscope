@@ -189,6 +189,7 @@ mod tests {
                 samples: vec![],
                 sample_period_ns: 50_000_000,
             }),
+            gpu_timeline: None,
             timing: TimingMetrics {
                 token_count: 3,
                 ttft_ns: Some(412_000_000),
@@ -249,6 +250,7 @@ mod tests {
         let r = Report {
             request_timing: RequestTiming::new(vec![], 0),
             resource_timeline: None,
+            gpu_timeline: None,
             timing: TimingMetrics {
                 token_count: 0,
                 ttft_ns: None,

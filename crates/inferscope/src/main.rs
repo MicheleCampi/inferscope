@@ -2,7 +2,9 @@
 //!
 //! Entry point and runtime orchestration. The CLI argument schema
 //! lives in the [`cli`] module; this file ties probe, sysmon, and
-//! report together.
+//! report together. When built with the `gpu-nvidia` feature, the
+//! orchestrator additionally spawns a GPU sampler task in parallel
+//! with the probe and the /proc sampler (per ADR-005).
 
 mod cli;
 
@@ -16,14 +18,20 @@ use is_probe::{config::ProbeConfig, runner::run as run_probe};
 use is_report::{derive_resource, derive_timing, render_json, render_text, Report};
 use is_sysmon::{config::SysmonConfig, sampler::sample_during};
 
+#[cfg(feature = "gpu-nvidia")]
+use is_core::GpuTimeline;
+#[cfg(feature = "gpu-nvidia")]
+use is_sysmon::{sample_gpu_during, GpuSampler};
+
 use crate::cli::Args;
 
 fn main() -> ExitCode {
     let args = Args::parse();
 
     // Build a multi-threaded tokio runtime so the probe (network
-    // I/O) and the sysmon (filesystem I/O on /proc) can make real
-    // progress in parallel rather than time-sharing one thread.
+    // I/O), the sysmon (filesystem I/O on /proc), and the optional
+    // GPU sampler (NVML calls) can make real progress in parallel
+    // rather than time-sharing one thread.
     let runtime = match tokio::runtime::Builder::new_multi_thread()
         .enable_all()
         .build()
@@ -44,12 +52,14 @@ fn main() -> ExitCode {
     }
 }
 
-/// Runs one probe (plus optional sysmon), builds the report, and
-/// writes it to stdout. Returns a friendly error string on failure.
+/// Runs one probe (plus optional sysmon and GPU sampler), builds
+/// the report, and writes it to stdout. Returns a friendly error
+/// string on failure.
 async fn orchestrate(args: Args) -> Result<(), String> {
-    // The single reference instant shared between the probe and
-    // the sysmon, per ADR-003. Captured before either task starts
-    // so both produce elapsed_ns from the same origin.
+    // The single reference instant shared between the probe, the
+    // /proc sampler, and the GPU sampler, per ADR-003 and ADR-005.
+    // Captured before any task starts so all three produce
+    // elapsed_ns from the same origin.
     let start = Instant::now();
 
     // Validate the PID early: if the user passed --pid pointing
@@ -84,8 +94,33 @@ async fn orchestrate(args: Args) -> Result<(), String> {
         (task, cancel_tx)
     });
 
+    // Spawn GPU sampler if --gpu was supplied and the feature is
+    // compiled in. Failure to initialise NVML is non-fatal:
+    // we emit a warning and continue without GPU sampling, per
+    // ADR-005.
+    #[cfg(feature = "gpu-nvidia")]
+    let gpu_handle = if args.gpu {
+        match GpuSampler::new() {
+            Ok(sampler) => {
+                let cfg = SysmonConfig::with_period(0, args.sample_period());
+                let (cancel_tx, cancel_rx) = oneshot::channel();
+                let task = tokio::spawn(sample_gpu_during(sampler, cfg, start, cancel_rx));
+                Some((task, cancel_tx))
+            }
+            Err(e) => {
+                eprintln!(
+                    "inferscope: warning: GPU sampling requested but unavailable: {e}"
+                );
+                None
+            }
+        }
+    } else {
+        None
+    };
+
     // Run the probe to completion. The probe owns the wall clock
-    // of the profiling run; sysmon is purely along for the ride.
+    // of the profiling run; sysmon and GPU sampler are along for
+    // the ride.
     let probe_result = run_probe(&probe_cfg)
         .await
         .map_err(|e| format!("probe failed: {e}"));
@@ -110,8 +145,25 @@ async fn orchestrate(args: Args) -> Result<(), String> {
         None
     };
 
-    // Surface the probe error only after sysmon has been cleaned
-    // up. Doing it earlier would leak the sampling task.
+    // Stop GPU sampler with the same shape as the /proc sampler.
+    #[cfg(feature = "gpu-nvidia")]
+    let gpu_timeline: Option<GpuTimeline> = if let Some((task, cancel_tx)) = gpu_handle {
+        let _ = cancel_tx.send(());
+        match task.await {
+            Ok(timeline) => Some(timeline),
+            Err(e) => {
+                eprintln!("inferscope: warning: GPU sampler task ended abnormally: {e}");
+                None
+            }
+        }
+    } else {
+        None
+    };
+    #[cfg(not(feature = "gpu-nvidia"))]
+    let gpu_timeline = None;
+
+    // Surface the probe error only after both samplers have been
+    // cleaned up. Doing it earlier would leak the sampling tasks.
     let request_timing = probe_result?;
 
     let timing = derive_timing(&request_timing);
@@ -123,6 +175,7 @@ async fn orchestrate(args: Args) -> Result<(), String> {
     let report = Report {
         request_timing,
         resource_timeline,
+        gpu_timeline,
         timing,
         resource,
     };
