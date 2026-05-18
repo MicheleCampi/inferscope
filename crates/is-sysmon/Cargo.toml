@@ -6,9 +6,15 @@ rust-version.workspace = true
 license.workspace = true
 repository.workspace = true
 authors.workspace = true
-description = "System monitor for inferscope: samples engine process resource usage from /proc"
+description = "System monitor for inferscope: samples engine process resource usage from /proc, plus optional GPU sampling via NVML (gpu-nvidia) and ROCm SMI (gpu-amd)"
 
 [dependencies]
 is-core = { path = "../is-core" }
 thiserror.workspace = true
 tokio.workspace = true
+nvml-wrapper = { workspace = true, optional = true }
+
+[features]
+default = []
+gpu-nvidia = ["dep:nvml-wrapper"]
+gpu-amd = []
