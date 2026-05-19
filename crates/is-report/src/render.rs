@@ -39,6 +39,10 @@ pub fn render_text(report: &Report) -> String {
         out.push('\n');
         render_resource_usage(&mut out, res);
     }
+    if let Some(gpu) = &report.gpu {
+        out.push('\n');
+        render_gpu_usage(&mut out, gpu);
+    }
 
     out
 }
@@ -132,6 +136,49 @@ fn render_resource_usage(out: &mut String, res: &ResourceMetrics) {
             res.thread_min, res.thread_max
         );
     }
+
+}
+fn render_gpu_usage(out: &mut String, gpu: &crate::metrics::GpuMetrics) {
+    let device_suffix = if gpu.device_count == 1 {
+        String::new()
+    } else {
+        format!(", {} devices", gpu.device_count)
+    };
+    let _ = writeln!(
+        out,
+        "GPU resource usage ({} samples{})",
+        gpu.sample_count, device_suffix
+    );
+    let _ = writeln!(
+        out,
+        "  VRAM               peak {}  mean {}",
+        format_bytes(gpu.memory_used_max_bytes),
+        format_bytes(gpu.memory_used_mean_bytes),
+    );
+    let _ = writeln!(
+        out,
+        "                     min  {}  total {}",
+        format_bytes(gpu.memory_used_min_bytes),
+        format_bytes(gpu.memory_total_bytes),
+    );
+    let _ = writeln!(
+        out,
+        "  SM utilization     peak {}%  mean {}%  min {}%",
+        gpu.utilization_max_percent,
+        gpu.utilization_mean_percent,
+        gpu.utilization_min_percent,
+    );
+    let _ = writeln!(
+        out,
+        "  Temperature        peak {} C",
+        gpu.temperature_max_celsius
+    );
+    let _ = writeln!(
+        out,
+        "  Power draw         peak {:.1} W  mean {:.1} W",
+        gpu.power_max_milliwatts as f64 / 1000.0,
+        gpu.power_mean_milliwatts as f64 / 1000.0,
+    );
 }
 
 /// Formats a nanosecond duration as a short human-readable string.
@@ -214,6 +261,7 @@ mod tests {
                 thread_min: 8,
                 thread_max: 8,
             }),
+            gpu: None,
         }
     }
 
@@ -259,6 +307,7 @@ mod tests {
                 inter_token_latency: None,
             },
             resource: None,
+            gpu: None,
         };
         let text = render_text(&r);
         assert!(text.contains("Tokens generated      0"));

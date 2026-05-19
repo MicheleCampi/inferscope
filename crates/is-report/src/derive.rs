@@ -163,6 +163,75 @@ fn percentile_nearest_rank(sorted: &[u64], percentile: u32) -> u64 {
     sorted[idx]
 }
 
+
+/// Computes derived GPU metrics from a [`GpuTimeline`].
+///
+/// Returns `Ok(None)` if the timeline is empty. Aggregations span
+/// every sample regardless of `device_index`; a multi-GPU run
+/// produces one set of summary statistics. Consumers needing
+/// per-device breakdowns inspect the raw `gpu_timeline.samples`
+/// directly (the timeline keeps device_index on every sample).
+///
+/// Mean values are arithmetic means over all samples without
+/// weighting. For utilisation in particular, this means a
+/// quiet GPU and a busy one in the same run contribute equally
+/// to the mean; consumers who care about per-device patterns
+/// look at the raw data.
+pub fn derive_gpu(
+    timeline: &is_core::GpuTimeline,
+) -> Option<crate::metrics::GpuMetrics> {
+    if timeline.samples.is_empty() {
+        return None;
+    }
+
+    let samples = &timeline.samples;
+    let sample_count = samples.len() as u32;
+    let device_count = timeline.device_indices().len() as u32;
+
+    // VRAM aggregations.
+    let memory_used_min_bytes = samples.iter().map(|s| s.memory_used_bytes).min().unwrap();
+    let memory_used_max_bytes = samples.iter().map(|s| s.memory_used_bytes).max().unwrap();
+    let memory_sum: u128 = samples.iter().map(|s| s.memory_used_bytes as u128).sum();
+    let memory_used_mean_bytes = (memory_sum / samples.len() as u128) as u64;
+
+    // VRAM total from the first sample. ADR-005 note: on a
+    // multi-GPU host with cards of different total VRAM this is
+    // only the first device's total; the field documents that
+    // limitation.
+    let memory_total_bytes = samples.first().unwrap().memory_total_bytes;
+
+    // Utilisation aggregations (u8 in 0..=100 by ADR-005 contract).
+    let utilization_min_percent = samples.iter().map(|s| s.utilization_percent).min().unwrap();
+    let utilization_max_percent = samples.iter().map(|s| s.utilization_percent).max().unwrap();
+    let util_sum: u32 = samples.iter().map(|s| s.utilization_percent as u32).sum();
+    let utilization_mean_percent = (util_sum / samples.len() as u32) as u8;
+
+    // Temperature: only max is informative — we are looking for
+    // thermal events. Min and mean would be dominated by long
+    // idle periods at session boundaries.
+    let temperature_max_celsius = samples.iter().map(|s| s.temperature_celsius).max().unwrap();
+
+    // Power: peak and mean.
+    let power_max_milliwatts = samples.iter().map(|s| s.power_draw_milliwatts).max().unwrap();
+    let power_sum: u64 = samples.iter().map(|s| s.power_draw_milliwatts as u64).sum();
+    let power_mean_milliwatts = (power_sum / samples.len() as u64) as u32;
+
+    Some(crate::metrics::GpuMetrics {
+        sample_count,
+        device_count,
+        memory_used_min_bytes,
+        memory_used_max_bytes,
+        memory_used_mean_bytes,
+        memory_total_bytes,
+        utilization_min_percent,
+        utilization_max_percent,
+        utilization_mean_percent,
+        temperature_max_celsius,
+        power_max_milliwatts,
+        power_mean_milliwatts,
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -338,5 +407,88 @@ mod tests {
         assert_eq!(percentile_nearest_rank(&sorted, 95), 50);
         assert_eq!(percentile_nearest_rank(&sorted, 99), 50);
         assert_eq!(percentile_nearest_rank(&sorted, 100), 50);
+    }
+
+    // ----- derive_gpu -----
+
+    fn gpu_sample(
+        elapsed_ns: u64,
+        device_index: u32,
+        mem_used: u64,
+        util: u8,
+        temp: u32,
+        power_mw: u32,
+    ) -> is_core::GpuSample {
+        is_core::GpuSample {
+            elapsed_ns,
+            device_index,
+            memory_used_bytes: mem_used,
+            memory_total_bytes: 80 * 1024 * 1024 * 1024,
+            utilization_percent: util,
+            temperature_celsius: temp,
+            power_draw_milliwatts: power_mw,
+        }
+    }
+
+    #[test]
+    fn derive_gpu_returns_none_on_empty_timeline() {
+        let tl = is_core::GpuTimeline::new(50_000_000);
+        assert!(derive_gpu(&tl).is_none());
+    }
+
+    #[test]
+    fn derive_gpu_single_sample_collapses_to_that_sample() {
+        let mut tl = is_core::GpuTimeline::new(50_000_000);
+        tl.push(gpu_sample(0, 0, 1_000_000_000, 50, 45, 200_000));
+        let m = derive_gpu(&tl).expect("non-empty");
+        assert_eq!(m.sample_count, 1);
+        assert_eq!(m.device_count, 1);
+        assert_eq!(m.memory_used_min_bytes, 1_000_000_000);
+        assert_eq!(m.memory_used_max_bytes, 1_000_000_000);
+        assert_eq!(m.memory_used_mean_bytes, 1_000_000_000);
+        assert_eq!(m.utilization_min_percent, 50);
+        assert_eq!(m.utilization_max_percent, 50);
+        assert_eq!(m.utilization_mean_percent, 50);
+        assert_eq!(m.temperature_max_celsius, 45);
+        assert_eq!(m.power_max_milliwatts, 200_000);
+        assert_eq!(m.power_mean_milliwatts, 200_000);
+    }
+
+    #[test]
+    fn derive_gpu_multiple_samples_aggregates_min_max_mean() {
+        let mut tl = is_core::GpuTimeline::new(50_000_000);
+        // Three samples on device 0 with rising VRAM and utilisation.
+        tl.push(gpu_sample(0, 0, 1_000_000_000, 10, 40, 100_000));
+        tl.push(gpu_sample(50_000_000, 0, 2_000_000_000, 50, 50, 200_000));
+        tl.push(gpu_sample(100_000_000, 0, 3_000_000_000, 90, 60, 300_000));
+        let m = derive_gpu(&tl).expect("non-empty");
+        assert_eq!(m.sample_count, 3);
+        assert_eq!(m.device_count, 1);
+        // VRAM: min=1G, max=3G, mean=2G.
+        assert_eq!(m.memory_used_min_bytes, 1_000_000_000);
+        assert_eq!(m.memory_used_max_bytes, 3_000_000_000);
+        assert_eq!(m.memory_used_mean_bytes, 2_000_000_000);
+        // Util: min=10, max=90, mean=50.
+        assert_eq!(m.utilization_min_percent, 10);
+        assert_eq!(m.utilization_max_percent, 90);
+        assert_eq!(m.utilization_mean_percent, 50);
+        // Temperature peak.
+        assert_eq!(m.temperature_max_celsius, 60);
+        // Power: max=300mW, mean=200mW.
+        assert_eq!(m.power_max_milliwatts, 300_000);
+        assert_eq!(m.power_mean_milliwatts, 200_000);
+    }
+
+    #[test]
+    fn derive_gpu_multi_gpu_counts_devices_correctly() {
+        let mut tl = is_core::GpuTimeline::new(50_000_000);
+        // One tick of a 4-GPU machine.
+        tl.push(gpu_sample(0, 0, 1_000_000_000, 50, 45, 200_000));
+        tl.push(gpu_sample(0, 1, 1_000_000_000, 50, 45, 200_000));
+        tl.push(gpu_sample(0, 2, 1_000_000_000, 50, 45, 200_000));
+        tl.push(gpu_sample(0, 3, 1_000_000_000, 50, 45, 200_000));
+        let m = derive_gpu(&tl).expect("non-empty");
+        assert_eq!(m.sample_count, 4);
+        assert_eq!(m.device_count, 4);
     }
 }

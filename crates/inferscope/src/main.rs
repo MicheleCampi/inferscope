@@ -15,7 +15,7 @@ use clap::Parser;
 use tokio::sync::oneshot;
 
 use is_probe::{config::ProbeConfig, runner::run as run_probe};
-use is_report::{derive_resource, derive_timing, render_json, render_text, Report};
+use is_report::{derive_gpu, derive_resource, derive_timing, render_json, render_text, Report};
 use is_sysmon::{config::SysmonConfig, sampler::sample_during};
 
 #[cfg(feature = "gpu-nvidia")]
@@ -172,12 +172,15 @@ async fn orchestrate(args: Args) -> Result<(), String> {
         None => None,
     };
 
+    let gpu = gpu_timeline.as_ref().and_then(derive_gpu);
+
     let report = Report {
         request_timing,
         resource_timeline,
         gpu_timeline,
         timing,
         resource,
+        gpu,
     };
 
     if args.json {

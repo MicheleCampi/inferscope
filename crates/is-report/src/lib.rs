@@ -23,7 +23,7 @@ pub mod error;
 pub mod metrics;
 pub mod render;
 
-pub use derive::{derive_resource, derive_timing};
+pub use derive::{derive_gpu, derive_resource, derive_timing};
 pub use error::ReportError;
-pub use metrics::{LatencyDistribution, Report, ResourceMetrics, TimingMetrics};
+pub use metrics::{GpuMetrics, LatencyDistribution, Report, ResourceMetrics, TimingMetrics};
 pub use render::{render_json, render_text};

@@ -78,6 +78,46 @@ pub struct ResourceMetrics {
     pub thread_max: u32,
 }
 
+/// GPU metrics derived from a [`GpuTimeline`].
+///
+/// Aggregations span all devices in the timeline; a multi-GPU
+/// run produces one set of statistics summarising every device.
+/// Consumers that need per-device breakdowns inspect the raw
+/// `gpu_timeline.samples` directly.
+///
+/// `*_mean_percent` and `*_mean_milliwatts` fields are computed
+/// across all samples without weighting; on a multi-GPU run the
+/// mean reflects total observation time per device equally.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub struct GpuMetrics {
+    /// Number of samples in the timeline.
+    pub sample_count: u32,
+    /// Number of distinct GPU devices that appear in the timeline.
+    pub device_count: u32,
+    /// Minimum VRAM in use across all samples, in bytes.
+    pub memory_used_min_bytes: u64,
+    /// Maximum VRAM in use across all samples, in bytes.
+    pub memory_used_max_bytes: u64,
+    /// Arithmetic mean VRAM in use across all samples, in bytes.
+    pub memory_used_mean_bytes: u64,
+    /// Total VRAM capacity reported for the first device.
+    /// On a multi-GPU host with mixed cards this only reflects one;
+    /// consumers needing per-device totals inspect the raw samples.
+    pub memory_total_bytes: u64,
+    /// Minimum SM utilisation observed, in percent.
+    pub utilization_min_percent: u8,
+    /// Maximum SM utilisation observed, in percent.
+    pub utilization_max_percent: u8,
+    /// Mean SM utilisation across all samples, in percent.
+    pub utilization_mean_percent: u8,
+    /// Maximum chip temperature observed, in degrees Celsius.
+    pub temperature_max_celsius: u32,
+    /// Maximum power draw observed, in milliwatts.
+    pub power_max_milliwatts: u32,
+    /// Mean power draw across all samples, in milliwatts.
+    pub power_mean_milliwatts: u32,
+}
+
 /// The full report for one probe run: raw signals plus derived
 /// metrics, packaged together so the JSON output is a single
 /// self-contained document.
@@ -93,6 +133,8 @@ pub struct Report {
     pub timing: TimingMetrics,
     /// Derived resource metrics, if a resource timeline was available.
     pub resource: Option<ResourceMetrics>,
+    /// Derived GPU metrics, if a GPU timeline was available.
+    pub gpu: Option<GpuMetrics>,
 }
 
 #[cfg(test)]
@@ -144,6 +186,7 @@ mod tests {
                 thread_min: 8,
                 thread_max: 8,
             }),
+            gpu: None,
         }
     }
 
@@ -179,6 +222,7 @@ mod tests {
                 inter_token_latency: None,
             },
             resource: None,
+            gpu: None,
         };
 
         let json = serde_json::to_string(&original).expect("serialize");
