@@ -19,10 +19,15 @@ llama.cpp's server, mistral.rs, vLLM, Ollama, TGI — is a target.
 
 ## Status
 
-**Alpha. Under active development.** The public API and CLI surface
-will change before v0.1.0 is tagged. This repository is being built
-in the open; the commit history is the development log.
+**v0.1.0 released (May 2026).** The CPU-side profiling foundation
+is stable: token timing capture, `/proc`-based process resource
+sampling, derived metrics, and text/JSON reporting.
 
+**v0.2 in active development** on the
+[`gpu/v0.2`](https://github.com/MicheleCampi/inferscope/tree/gpu/v0.2)
+branch, adding NVIDIA GPU resource sampling via NVML behind a
+`gpu-nvidia` feature flag. AMD support via ROCm SMI is planned in
+the same release.
 ## What it measures
 
 For each request sent to an engine, inferscope captures:
@@ -88,10 +93,11 @@ computation — is the direction for v0.2 and beyond. The reasoning
 behind this sequencing is recorded in
 [ADR-001](docs/adr/001-profiling-scope.md).
 
-**GPU resource monitoring** (NVML, ROCm SMI) is also v0.2+: the
+**GPU resource monitoring** (NVML, ROCm SMI) is the focus of v0.2,
+now in development on the [`gpu/v0.2`](https://github.com/MicheleCampi/inferscope/tree/gpu/v0.2) branch. The
 timing portion of inferscope is engine-agnostic and works against
-GPU engines today, but the resource portion currently reads
-/proc only and so describes the CPU-side process. See
+GPU engines today, but on the main branch the resource portion reads
+`/proc` only and so describes the CPU-side process. See
 [ADR-003](docs/adr/003-sysmon-scope-and-correlation.md).
 
 ## Architecture
@@ -129,12 +135,18 @@ The CLI binary lands at `target/release/inferscope`. Run
 
 ## Roadmap
 
-- **v0.1.0** — API-level profiling: token timing, resource
-  footprint correlation, text and JSON reports, CLI.
-- **v0.2+** — engine-internal instrumentation (phase-level
-  attribution of time and memory) and GPU resource monitoring
-  (NVML / ROCm SMI).
-
+- **v0.1.0** (May 2026) — released. API-level profiling: token
+  timing, `/proc`-based resource footprint correlation, text and
+  JSON reports, CLI.
+- **v0.2** — in development on
+  [`gpu/v0.2`](https://github.com/MicheleCampi/inferscope/tree/gpu/v0.2).
+  NVIDIA GPU sampling via NVML (VRAM, SM utilisation, temperature,
+  power) and AMD support via ROCm SMI, both behind feature flags.
+  See [ADR-005](docs/adr/005-gpu-resource-sampling.md).
+- **v0.3 and beyond** — engine-internal instrumentation:
+  phase-level attribution of time and memory inside the inference
+  engine (KV cache, attention, sampling). See
+  [ADR-001](docs/adr/001-profiling-scope.md).
 ## License
 
 Licensed under the [Apache License, Version 2.0](LICENSE).

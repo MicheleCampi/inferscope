@@ -7,9 +7,59 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **NVIDIA GPU resource sampling** via NVML. When built with
+  `--features gpu-nvidia` and invoked with `--gpu`, inferscope
+  now samples every visible NVIDIA GPU in parallel with the
+  probe and the `/proc` sampler, recording VRAM in use, SM
+  utilisation, temperature, and power draw. Samples carry
+  `elapsed_ns` from the same reference instant the probe and
+  the `/proc` sampler use, so GPU samples correlate with token
+  arrivals and CPU samples by direct numeric comparison. See
+  [ADR-005](docs/adr/005-gpu-resource-sampling.md).
+- **`GpuSample` and `GpuTimeline`** in `is-core`, parallel in
+  shape to the existing `ResourceSample` and `ResourceTimeline`.
+  Integer fields throughout — VRAM in bytes, utilisation as
+  `0..=100`, power in milliwatts — preserving the lossless-
+  signal principle from ADR-002 and ADR-003.
+- **`GpuSampler`** in `is-sysmon`, behind the `gpu-nvidia`
+  feature flag. Construction initialises NVML once and caches
+  per-device indices; per-tick sampling re-fetches handles
+  cheaply (microseconds per device). Fails fast and gracefully
+  on hosts without an NVIDIA driver, surfacing
+  `GpuError::NvmlUnavailable` rather than aborting the run.
+  No `unsafe` anywhere in the crate.
+- **`GpuMetrics`** derived metrics in `is-report`: VRAM
+  aggregations (min/max/mean/total), SM utilisation aggregations
+  (min/max/mean), peak temperature, and power draw (peak/mean).
+  All-integer field types, so the struct derives `Eq`.
+- **`--gpu` CLI flag** on the `inferscope` binary, compiled in
+  only when the `gpu-nvidia` feature is enabled. Defaults to
+  false; when set, the orchestrator spawns the GPU sampler
+  alongside the probe and the `/proc` sampler with shared
+  cancellation semantics.
+- **Plain-text GPU section** in the report output ("GPU
+  resource usage") with per-device count, VRAM peak/mean/min
+  and total, SM utilisation peak/mean/min, peak temperature,
+  and power peak/mean. JSON output carries both the raw
+  `gpu_timeline` and the derived `gpu` metrics in the same
+  document per ADR-004.
+
+### Changed
+
+- The `Report` struct in `is-report` gains an
+  `Option<GpuTimeline>` raw field and an `Option<GpuMetrics>`
+  derived field. Both are `None` when the GPU path is inactive
+  (no `--gpu` flag, NVML unavailable, or feature not compiled
+  in); the text and JSON renderers omit the GPU section in
+  that case.
+
 ## [0.1.0] — 2026-05-16
 
+
 The first public release of inferscope.
+
 
 ### Added
 
