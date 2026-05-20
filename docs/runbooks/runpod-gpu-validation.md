@@ -126,10 +126,33 @@ GPU. The smallest reasonable workload is Qwen 2.5 0.5B Q4
 Expected: JSON response listing the loaded model. If the curl
 hangs, the server failed to start; check its stderr.
 
-Capture the server PID for inferscope:
+### Finding the correct server PID
 
-    SERVER_PID=$(pgrep -f llama-server | head -1)
+**Do not use `$!` from the background launch.** Bash returns the
+PID of a transient wrapper shell that handles redirection, not
+the `llama-server` worker. If you use `$!`, inferscope will
+faithfully sample a process with RSS ~2 MiB, 0 jiffies, and 1
+thread — completely uncorrelated with the actual inference
+workload.
+
+The correct pattern is:
+
+    SERVER_PID=$(pgrep -x llama-server | head -1)
     echo "Server PID: $SERVER_PID"
+
+`pgrep -x` matches the exact process name (not the command line),
+returning the long-lived worker rather than any wrapper.
+
+**Sanity check before running inferscope**: a healthy worker
+should have RSS in the hundreds of MiB at minimum (the model
+weights live there, even with GPU offload some host-side data
+remains) and threads above 1:
+
+    cat /proc/$SERVER_PID/status | grep -E "VmRSS|Threads"
+
+If RSS is below 10 MiB or Threads is exactly 1, the PID is wrong —
+re-run `pgrep -x llama-server` and pick another candidate.
+
 
 ## Step 7 — Run inferscope with --gpu
 
@@ -225,6 +248,14 @@ driver. Destroy and re-deploy with a CUDA devel image.
 **`cargo build` fails on `nvml-wrapper`** — verify pod has
 `libssl-dev` and `pkg-config`: `apt-get install -y libssl-dev
 pkg-config`.
+
+**Process resource usage shows RSS ~2 MiB, 0% CPU, 1 thread** —
+the PID supplied to `--pid` is a wrapper shell or transient
+process, not the real `llama-server` worker. See the
+"Finding the correct server PID" section under Step 6. Re-run
+`pgrep -x llama-server` and pick a candidate whose
+`/proc/<pid>/status` shows a sane VmRSS (hundreds of MiB or
+more) and Threads > 1.
 
 **`inferscope --gpu` says NVML unavailable inside the pod** —
 the pod has CUDA but no NVML libraries. Try the
