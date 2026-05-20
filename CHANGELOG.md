@@ -45,6 +45,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   and power peak/mean. JSON output carries both the raw
   `gpu_timeline` and the derived `gpu` metrics in the same
   document per ADR-004.
+- **Pre-flight warning for misconfigured `--pid`**. When every
+  sample in the timeline shows RSS below 10 MiB AND exactly one
+  thread AND zero CPU jiffies, inferscope now emits a stderr
+  warning that the supplied PID likely points to a wrapper shell
+  rather than the actual workload (a common pitfall with bash
+  background launches followed by output redirection). The
+  warning is informational and does not alter the report.
+- **GPU validation runbook** in `docs/runbooks/runpod-gpu-validation.md`,
+  a step-by-step procedure for validating the NVIDIA path on a
+  real GPU host via RunPod. Documents the correct `pgrep -x`
+  pattern for capturing the `llama-server` PID, the
+  `$!`-after-redirection pitfall it avoids, cost estimates per
+  validation run, and a troubleshooting section covering the
+  most likely first-time failure modes.
 
 ### Changed
 
