@@ -166,6 +166,31 @@ async fn orchestrate(args: Args) -> Result<(), String> {
     // cleaned up. Doing it earlier would leak the sampling tasks.
     let request_timing = probe_result?;
 
+    // Sanity check: warn if the monitored PID looks like a
+    // wrapper rather than the actual workload. If every sample
+    // we collected has RSS < 10 MiB AND exactly 1 thread AND
+    // zero CPU jiffies, the user almost certainly passed the
+    // PID of a transient shell (e.g. $! after bash redirection)
+    // rather than the long-lived worker. We do not fail — just
+    // surface the suspicion so the result is interpreted
+    // correctly.
+    if let Some(tl) = resource_timeline.as_ref() {
+        let suspicious = !tl.samples.is_empty()
+            && tl.samples.iter().all(|s| s.rss_bytes < 10 * 1024 * 1024)
+            && tl.samples.iter().all(|s| s.thread_count == 1)
+            && tl.samples.iter().all(|s| s.cpu_user_jiffies == 0 && s.cpu_system_jiffies == 0);
+        if suspicious {
+            eprintln!(
+                "inferscope: warning: monitored PID looks idle across all {} samples \
+                 (RSS < 10 MiB, 1 thread, 0 CPU jiffies). The --pid argument may point \
+                 to a wrapper shell rather than the actual workload. \
+                 Verify with: cat /proc/<pid>/status | grep -E 'VmRSS|Threads'.",
+                tl.samples.len()
+            );
+        }
+    }
+
+
     let timing = derive_timing(&request_timing);
     let resource = match resource_timeline.as_ref() {
         Some(tl) => derive_resource(tl).map_err(|e| format!("report derivation failed: {e}"))?,
