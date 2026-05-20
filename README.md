@@ -26,8 +26,8 @@ sampling, derived metrics, and text/JSON reporting.
 **v0.2 in active development** on the
 [`gpu/v0.2`](https://github.com/MicheleCampi/inferscope/tree/gpu/v0.2)
 branch, adding NVIDIA GPU resource sampling via NVML behind a
-`gpu-nvidia` feature flag. AMD support via ROCm SMI is planned in
-the same release.
+`gpu-nvidia` feature flag. AMD support via the newer `amd-smi`
+tool is planned for v0.3, once that tool reaches a stable release.
 ## What it measures
 
 For each request sent to an engine, inferscope captures:
@@ -93,7 +93,7 @@ computation — is the direction for v0.2 and beyond. The reasoning
 behind this sequencing is recorded in
 [ADR-001](docs/adr/001-profiling-scope.md).
 
-**GPU resource monitoring** (NVML, ROCm SMI) is the focus of v0.2,
+**NVIDIA GPU resource monitoring** via NVML is the focus of v0.2,
 now in development on the [`gpu/v0.2`](https://github.com/MicheleCampi/inferscope/tree/gpu/v0.2) branch. The
 timing portion of inferscope is engine-agnostic and works against
 GPU engines today, but on the main branch the resource portion reads
@@ -134,16 +134,18 @@ The CLI binary lands at `target/release/inferscope`. Run
 `inferscope --help` for the full argument list.
 
 ## Roadmap
-
 - **v0.1.0** (May 2026) — released. API-level profiling: token
   timing, `/proc`-based resource footprint correlation, text and
   JSON reports, CLI.
 - **v0.2** — in development on
   [`gpu/v0.2`](https://github.com/MicheleCampi/inferscope/tree/gpu/v0.2).
   NVIDIA GPU sampling via NVML (VRAM, SM utilisation, temperature,
-  power) and AMD support via ROCm SMI, both behind feature flags.
-  See [ADR-005](docs/adr/005-gpu-resource-sampling.md).
-- **v0.3 and beyond** — engine-internal instrumentation:
+  power) behind a `gpu-nvidia` feature flag. See
+  [ADR-005](docs/adr/005-gpu-resource-sampling.md).
+- **v0.3** — AMD GPU sampling via `amd-smi`, the successor to
+  the (deprecating) `rocm-smi`. Deferred from v0.2 to wait for
+  `amd-smi` to reach a stable interface.
+- **v0.4 and beyond** — engine-internal instrumentation:
   phase-level attribution of time and memory inside the inference
   engine (KV cache, attention, sampling). See
   [ADR-001](docs/adr/001-profiling-scope.md).
