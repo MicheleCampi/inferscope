@@ -7,6 +7,77 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.1] — 2026-05-21
+
+### Added
+
+- **`--include-descendants` CLI flag** on the `inferscope`
+  binary. When supplied together with `--pid`, the `/proc`
+  sampler aggregates the monitored PID with the resource usage
+  of every direct child the kernel reports under
+  `/proc/<pid>/task/<pid>/children`. Addresses the wrapper-PID
+  class of failure where a forked-worker process model (typical
+  of `llama-server`, `uvicorn`, `gunicorn`, `vllm`) leaves the
+  parent process reporting near-zero RSS / CPU / threads. The
+  pre-existing runtime warning from v0.2.0 (`monitored PID
+  looks idle…`) is what tells the user to try the new flag.
+  See [ADR-006](docs/adr/006-process-tree-aggregation.md).
+- **`SysmonConfig::include_descendants`** field (default
+  `false`) and **`SysmonConfig::with_descendants()`** builder
+  method, exposing the aggregation opt-in to library consumers.
+- **`is_sysmon::parse::parse_children`** — pure parser for the
+  kernel's `/proc/<pid>/task/<tid>/children` file format. Five
+  unit tests cover the empty case, single PID, multiple PIDs,
+  trailing whitespace, and the non-numeric token error path.
+- **`is_sysmon::sampler::sample_once_aggregated`** — sampling
+  primitive that reads `/proc` for the parent PID and every
+  direct child, summing the four numeric `ResourceSample`
+  fields. Uses saturating arithmetic on every field for cheap
+  overflow safety. Failure-tiered behaviour: parent unreadable
+  propagates, children file unreadable falls back to parent-only,
+  per-child unreadable silently skipped (race tolerance per
+  ADR-006).
+- **Integration test** that spawns a real bash + sleep parent-
+  child pair, samples the bash PID with and without
+  aggregation, and verifies the aggregated thread count is
+  strictly higher than the parent-only count. End-to-end
+  exercise of the path that crosses `parse_children` →
+  `sample_once_aggregated` → `ResourceSample` summation.
+
+### Changed
+
+- **`sample_during`** now dispatches to `sample_once_aggregated`
+  when its `SysmonConfig` has `include_descendants = true`,
+  and to `sample_once` otherwise. Five-line change inside the
+  existing tick branch; surrounding `select!` / cancellation
+  / best-effort logic untouched.
+
+### Compatibility
+
+- **Fully backward compatible with v0.2.0.** The new
+  `SysmonConfig` field has a default that preserves v0.1.0 /
+  v0.2.0 semantics exactly. Every existing constructor
+  (`SysmonConfig::new`, `SysmonConfig::with_period`) produces
+  a config with aggregation disabled. No call site in the
+  workspace constructs `SysmonConfig` via literal struct
+  syntax, so the additive field cannot break downstream code.
+  Users who do not pass `--include-descendants` see no change
+  in CLI behaviour, report format, or JSON schema.
+
+### Known limitations
+
+- **Direct children only.** Aggregation walks one level: the
+  PIDs in `/proc/<pid>/task/<pid>/children`. Grandchildren are
+  not included. This covers the inference engines inferscope
+  targets (one-level fork models); a future revision may add
+  recursive walking if a production deployment surfaces the
+  need.
+- **Per-PID detail not exposed.** The aggregated sample sums
+  the group; the report cannot say "the parent held 100 MiB,
+  the worker held 1 GiB" — only "the group held 1.1 GiB". A
+  future revision may add per-PID breakdown to the JSON output
+  behind a verbosity flag.
+
 ## [0.2.0] — 2026-05-20
 
 ### Added
@@ -144,6 +215,7 @@ The first public release of inferscope.
   unrelated process, sysmon will faithfully sample that process.
   A user must still ensure the PID is the right one.
 
-[Unreleased]: https://github.com/MicheleCampi/inferscope/compare/v0.2.0...HEAD
+[Unreleased]: https://github.com/MicheleCampi/inferscope/compare/v0.2.1...HEAD
+[0.2.1]: https://github.com/MicheleCampi/inferscope/compare/v0.2.0...v0.2.1
 [0.2.0]: https://github.com/MicheleCampi/inferscope/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/MicheleCampi/inferscope/releases/tag/v0.1.0
