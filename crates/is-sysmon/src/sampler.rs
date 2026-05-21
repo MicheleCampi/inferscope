@@ -164,7 +164,12 @@ pub async fn sample_during(
             _ = &mut cancel => break,
 
             _ = ticker.tick() => {
-                match sample_once(config.pid, start).await {
+                let sample_result = if config.include_descendants {
+                    sample_once_aggregated(config.pid, start).await
+                } else {
+                    sample_once(config.pid, start).await
+                };
+                match sample_result {
                     Ok(sample) => timeline.push(sample),
                     Err(_) => {
                         // Best-effort: swallow per-tick errors so
