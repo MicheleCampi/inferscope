@@ -89,6 +89,11 @@ async fn orchestrate(args: Args) -> Result<(), String> {
     // is over.
     let sysmon_handle = args.pid.map(|pid| {
         let cfg = SysmonConfig::with_period(pid, args.sample_period());
+        let cfg = if args.include_descendants {
+            cfg.with_descendants()
+        } else {
+            cfg
+        };
         let (cancel_tx, cancel_rx) = oneshot::channel();
         let task = tokio::spawn(sample_during(cfg, start, cancel_rx));
         (task, cancel_tx)

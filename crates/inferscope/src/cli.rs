@@ -55,6 +55,21 @@ pub struct Args {
     #[arg(long, default_value_t = 50)]
     pub sample_period_ms: u64,
 
+    /// Aggregate the monitored PID with the resource usage of
+    /// its direct children.
+    ///
+    /// Use this when the engine you point `--pid` at forks a
+    /// worker that does the real inference work (typical of
+    /// `llama-server` and similar) and the parent process
+    /// itself reports near-zero RSS / CPU / threads. With this
+    /// flag set, each sample sums the parent's `/proc/<pid>`
+    /// metrics with those of every PID listed in
+    /// `/proc/<pid>/task/<pid>/children`. Failing per-child
+    /// reads are tolerated silently (a child may exit between
+    /// discovery and sample). Per ADR-006.
+    #[arg(long, default_value_t = false)]
+    pub include_descendants: bool,
+
     /// Sample GPU resources via NVML in parallel with the probe.
     ///
     /// When supplied, inferscope initialises NVML and samples
@@ -185,5 +200,36 @@ mod tests {
         ])
         .expect("args should parse with --gpu");
         assert!(args.gpu);
+    }
+
+    #[test]
+    fn include_descendants_defaults_to_false() {
+        let args = Args::try_parse_from([
+            "inferscope",
+            "--endpoint",
+            "http://localhost:8080",
+            "--model",
+            "llama3",
+            "--prompt",
+            "hi",
+        ])
+        .expect("args should parse without --include-descendants");
+        assert!(!args.include_descendants);
+    }
+
+    #[test]
+    fn include_descendants_parses_when_supplied() {
+        let args = Args::try_parse_from([
+            "inferscope",
+            "--endpoint",
+            "http://localhost:8080",
+            "--model",
+            "llama3",
+            "--prompt",
+            "hi",
+            "--include-descendants",
+        ])
+        .expect("args should parse with --include-descendants");
+        assert!(args.include_descendants);
     }
 }
