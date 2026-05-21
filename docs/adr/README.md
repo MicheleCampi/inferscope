@@ -18,6 +18,7 @@ left intact as a historical record.
 | [ADR-003](003-sysmon-scope-and-correlation.md) | sysmon Scope and Temporal Correlation | Accepted |
 | [ADR-004](004-report-metrics-and-format.md) | Report Metrics and Output Format | Accepted |
 | [ADR-005](005-gpu-resource-sampling.md) | GPU Resource Sampling | Accepted |
+| [ADR-006](006-process-tree-aggregation.md) | Process Tree Aggregation for Sysmon | Accepted |
 
 ## Format
 
