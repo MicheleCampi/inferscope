@@ -141,6 +141,33 @@ pub fn parse_stat(content: &str, path: &str) -> Result<StatFields, SysmonError> 
     })
 }
 
+
+/// Parses the body of `/proc/<pid>/task/<tid>/children` into the
+/// list of direct child PIDs.
+///
+/// The file format is a single line of space-separated decimal
+/// PIDs, possibly empty, possibly with trailing whitespace. The
+/// kernel emits one PID per direct child of the given thread at
+/// the moment of read; the snapshot is racy by nature (a child
+/// can exit between this read and a subsequent `/proc/<child>`
+/// access), and the caller is expected to tolerate per-PID
+/// failures downstream — see ADR-006.
+///
+/// An empty file is a valid input and yields an empty `Vec`.
+/// Any non-numeric token is reported as `InvalidValue`.
+pub fn parse_children(content: &str, path: &str) -> Result<Vec<u32>, SysmonError> {
+    content
+        .split_whitespace()
+        .map(|tok| {
+            tok.parse::<u32>().map_err(|_| SysmonError::InvalidValue {
+                field: "children_pid",
+                path: path.to_string(),
+                value: tok.to_string(),
+            })
+        })
+        .collect()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -275,6 +302,42 @@ SigQ:   0/63881
         assert!(
             matches!(err, SysmonError::InvalidValue { field: "utime", .. }),
             "expected InvalidValue utime, got {err:?}"
+        );
+    }
+
+    #[test]
+    fn parse_children_empty_returns_empty_vec() {
+        let pids = parse_children("", "/proc/1/task/1/children").unwrap();
+        assert!(pids.is_empty());
+    }
+
+    #[test]
+    fn parse_children_single_pid() {
+        let pids = parse_children("24865", "/proc/1/task/1/children").unwrap();
+        assert_eq!(pids, vec![24865]);
+    }
+
+    #[test]
+    fn parse_children_multiple_pids() {
+        let pids = parse_children("24865 24866 24867", "/proc/1/task/1/children").unwrap();
+        assert_eq!(pids, vec![24865, 24866, 24867]);
+    }
+
+    #[test]
+    fn parse_children_tolerates_trailing_whitespace() {
+        let pids = parse_children("24865 24866 \n", "/proc/1/task/1/children").unwrap();
+        assert_eq!(pids, vec![24865, 24866]);
+    }
+
+    #[test]
+    fn parse_children_errors_on_non_numeric_token() {
+        let err = parse_children("24865 abc 24867", "/proc/1/task/1/children").unwrap_err();
+        assert!(
+            matches!(
+                &err,
+                SysmonError::InvalidValue { field: "children_pid", value, .. } if value == "abc"
+            ),
+            "expected InvalidValue children_pid with value=abc, got {err:?}"
         );
     }
 }
