@@ -159,6 +159,7 @@ The CLI binary lands at `target/release/inferscope`. Run
 | [`CHANGELOG.md`](CHANGELOG.md) | Version-by-version release notes |
 | [`docs/adr/`](docs/adr/) | Six Architecture Decision Records covering profiling scope, sampling correlation, GPU resource sampling, process-tree aggregation |
 | [`docs/runbooks/runpod-gpu-validation.md`](docs/runbooks/runpod-gpu-validation.md) | End-to-end procedure for validating GPU sampling on RunPod (~$1–2/run) |
+| [`benchmarks/`](benchmarks/) | Cross-hardware comparison (L4/H100/4×A40), multi-device deep-dive, and vLLM vs llama.cpp head-to-head on H100 |
 | [`Dockerfile`](Dockerfile) | Multi-stage build, non-root user, CUDA 13.0.2 runtime |
 | [`deploy/`](deploy/) | Example docker-compose and Kubernetes Job manifests for running inferscope as a one-shot profiling workload |
 
