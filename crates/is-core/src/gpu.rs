@@ -115,8 +115,7 @@ impl GpuTimeline {
     /// A single-GPU run returns `[0]`. A 4-GPU run returns
     /// `[0, 1, 2, 3]`. An empty timeline returns `[]`.
     pub fn device_indices(&self) -> Vec<u32> {
-        let mut indices: Vec<u32> =
-            self.samples.iter().map(|s| s.device_index).collect();
+        let mut indices: Vec<u32> = self.samples.iter().map(|s| s.device_index).collect();
         indices.sort_unstable();
         indices.dedup();
         indices
@@ -215,8 +214,7 @@ mod tests {
         original.push(sample(100_000_000, 1, 2_500_000_000));
 
         let json = serde_json::to_string(&original).expect("serialize");
-        let restored: GpuTimeline =
-            serde_json::from_str(&json).expect("deserialize");
+        let restored: GpuTimeline = serde_json::from_str(&json).expect("deserialize");
         assert_eq!(original, restored);
     }
 }

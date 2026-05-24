@@ -60,7 +60,6 @@ pub async fn sample_once(pid: u32, start: Instant) -> Result<ResourceSample, Sys
     })
 }
 
-
 /// Reads /proc once for the given PID and its direct children,
 /// returning a single aggregated sample.
 ///
@@ -101,8 +100,8 @@ pub async fn sample_once_aggregated(
         Ok(c) => c,
         Err(_) => return Ok(parent),
     };
-    let child_pids = crate::parse::parse_children(&children_content, &children_path)
-        .unwrap_or_default();
+    let child_pids =
+        crate::parse::parse_children(&children_content, &children_path).unwrap_or_default();
 
     if child_pids.is_empty() {
         return Ok(parent);
@@ -207,7 +206,7 @@ mod tests {
         // *shape* — both calls succeeded, the aggregated sample is
         // not absurdly different from the single one. Equality is
         // not what we are testing here.
-        assert_eq!(aggregated.elapsed_ns >= single.elapsed_ns, true);
+        assert!(aggregated.elapsed_ns >= single.elapsed_ns);
         // Allow up to 50% drift on RSS — generous, but enough to
         // catch the failure mode where children are double-counted
         // against an empty children file.

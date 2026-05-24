@@ -107,11 +107,7 @@ impl GpuSampler {
 /// Samples a single device. Returns `None` if any of the five
 /// queries fails — the caller drops the sample for this device
 /// this tick.
-fn sample_device(
-    device: &Device<'_>,
-    index: u32,
-    elapsed_ns: u64,
-) -> Option<GpuSample> {
+fn sample_device(device: &Device<'_>, index: u32, elapsed_ns: u64) -> Option<GpuSample> {
     let memory = device.memory_info().ok()?;
     let utilization = device.utilization_rates().ok()?;
     let temperature = device.temperature(TemperatureSensor::Gpu).ok()?;

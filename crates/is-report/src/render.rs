@@ -136,7 +136,6 @@ fn render_resource_usage(out: &mut String, res: &ResourceMetrics) {
             res.thread_min, res.thread_max
         );
     }
-
 }
 fn render_gpu_usage(out: &mut String, gpu: &crate::metrics::GpuMetrics) {
     let device_suffix = if gpu.device_count == 1 {
@@ -164,9 +163,7 @@ fn render_gpu_usage(out: &mut String, gpu: &crate::metrics::GpuMetrics) {
     let _ = writeln!(
         out,
         "  SM utilization     peak {}%  mean {}%  min {}%",
-        gpu.utilization_max_percent,
-        gpu.utilization_mean_percent,
-        gpu.utilization_min_percent,
+        gpu.utilization_max_percent, gpu.utilization_mean_percent, gpu.utilization_min_percent,
     );
     let _ = writeln!(
         out,

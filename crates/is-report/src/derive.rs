@@ -163,7 +163,6 @@ fn percentile_nearest_rank(sorted: &[u64], percentile: u32) -> u64 {
     sorted[idx]
 }
 
-
 /// Computes derived GPU metrics from a [`GpuTimeline`].
 ///
 /// Returns `Ok(None)` if the timeline is empty. Aggregations span
@@ -177,9 +176,7 @@ fn percentile_nearest_rank(sorted: &[u64], percentile: u32) -> u64 {
 /// quiet GPU and a busy one in the same run contribute equally
 /// to the mean; consumers who care about per-device patterns
 /// look at the raw data.
-pub fn derive_gpu(
-    timeline: &is_core::GpuTimeline,
-) -> Option<crate::metrics::GpuMetrics> {
+pub fn derive_gpu(timeline: &is_core::GpuTimeline) -> Option<crate::metrics::GpuMetrics> {
     if timeline.samples.is_empty() {
         return None;
     }
@@ -212,7 +209,11 @@ pub fn derive_gpu(
     let temperature_max_celsius = samples.iter().map(|s| s.temperature_celsius).max().unwrap();
 
     // Power: peak and mean.
-    let power_max_milliwatts = samples.iter().map(|s| s.power_draw_milliwatts).max().unwrap();
+    let power_max_milliwatts = samples
+        .iter()
+        .map(|s| s.power_draw_milliwatts)
+        .max()
+        .unwrap();
     let power_sum: u64 = samples.iter().map(|s| s.power_draw_milliwatts as u64).sum();
     let power_mean_milliwatts = (power_sum / samples.len() as u64) as u32;
 

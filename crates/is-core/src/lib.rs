@@ -10,11 +10,11 @@
 //! depend on it without pulling in a runtime.
 
 pub mod error;
-pub mod resource;
 pub mod gpu;
+pub mod resource;
 pub mod timing;
 
 pub use error::CoreError;
-pub use resource::{ResourceSample, ResourceTimeline};
 pub use gpu::{GpuSample, GpuTimeline};
+pub use resource::{ResourceSample, ResourceTimeline};
 pub use timing::{RequestTiming, TokenArrival};

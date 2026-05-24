@@ -113,9 +113,7 @@ async fn orchestrate(args: Args) -> Result<(), String> {
                 Some((task, cancel_tx))
             }
             Err(e) => {
-                eprintln!(
-                    "inferscope: warning: GPU sampling requested but unavailable: {e}"
-                );
+                eprintln!("inferscope: warning: GPU sampling requested but unavailable: {e}");
                 None
             }
         }
@@ -183,7 +181,10 @@ async fn orchestrate(args: Args) -> Result<(), String> {
         let suspicious = !tl.samples.is_empty()
             && tl.samples.iter().all(|s| s.rss_bytes < 10 * 1024 * 1024)
             && tl.samples.iter().all(|s| s.thread_count == 1)
-            && tl.samples.iter().all(|s| s.cpu_user_jiffies == 0 && s.cpu_system_jiffies == 0);
+            && tl
+                .samples
+                .iter()
+                .all(|s| s.cpu_user_jiffies == 0 && s.cpu_system_jiffies == 0);
         if suspicious {
             eprintln!(
                 "inferscope: warning: monitored PID looks idle across all {} samples \
@@ -194,7 +195,6 @@ async fn orchestrate(args: Args) -> Result<(), String> {
             );
         }
     }
-
 
     let timing = derive_timing(&request_timing);
     let resource = match resource_timeline.as_ref() {

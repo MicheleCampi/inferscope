@@ -141,7 +141,6 @@ pub fn parse_stat(content: &str, path: &str) -> Result<StatFields, SysmonError> 
     })
 }
 
-
 /// Parses the body of `/proc/<pid>/task/<tid>/children` into the
 /// list of direct child PIDs.
 ///
