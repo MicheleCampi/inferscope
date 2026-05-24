@@ -230,6 +230,10 @@ pub fn derive_gpu(timeline: &is_core::GpuTimeline) -> Option<crate::metrics::Gpu
         temperature_max_celsius,
         power_max_milliwatts,
         power_mean_milliwatts,
+        // Per-device breakdown will be populated in a follow-up commit
+        // as part of ADR-007. For commit 1 (struct definition only)
+        // the field is initialised empty to keep behaviour unchanged.
+        per_device: Vec::new(),
     })
 }
 

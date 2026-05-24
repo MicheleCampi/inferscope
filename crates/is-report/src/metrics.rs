@@ -78,17 +78,51 @@ pub struct ResourceMetrics {
     pub thread_max: u32,
 }
 
+/// Per-device GPU metrics derived from a [`GpuTimeline`].
+///
+/// Each entry summarises the samples for one `device_index`.
+/// Introduced in v0.3.0 per [ADR-007](../../docs/adr/007-per-device-gpu-metrics.md).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct GpuDeviceMetrics {
+    /// Index of the GPU device as reported by NVML.
+    pub device_index: u32,
+    /// Number of samples for this device in the timeline.
+    pub sample_count: u32,
+    /// Minimum VRAM in use across this device's samples, in bytes.
+    pub memory_used_min_bytes: u64,
+    /// Maximum VRAM in use across this device's samples, in bytes.
+    pub memory_used_max_bytes: u64,
+    /// Arithmetic mean VRAM in use across this device's samples, in bytes.
+    pub memory_used_mean_bytes: u64,
+    /// Total VRAM capacity for this specific device.
+    pub memory_total_bytes: u64,
+    /// Minimum SM utilisation observed for this device, in percent.
+    pub utilization_min_percent: u8,
+    /// Maximum SM utilisation observed for this device, in percent.
+    pub utilization_max_percent: u8,
+    /// Mean SM utilisation for this device across its samples, in percent.
+    pub utilization_mean_percent: u8,
+    /// Maximum chip temperature observed for this device, in degrees Celsius.
+    pub temperature_max_celsius: u32,
+    /// Maximum power draw observed for this device, in milliwatts.
+    pub power_max_milliwatts: u32,
+    /// Mean power draw for this device across its samples, in milliwatts.
+    pub power_mean_milliwatts: u32,
+}
+
 /// GPU metrics derived from a [`GpuTimeline`].
 ///
-/// Aggregations span all devices in the timeline; a multi-GPU
-/// run produces one set of statistics summarising every device.
-/// Consumers that need per-device breakdowns inspect the raw
-/// `gpu_timeline.samples` directly.
+/// Top-level fields are cluster-wide aggregates across all devices
+/// and all samples; the `per_device` field (introduced in v0.3.0)
+/// breaks these out by `device_index`. See
+/// [ADR-007](../../docs/adr/007-per-device-gpu-metrics.md) for the
+/// rationale.
 ///
-/// `*_mean_percent` and `*_mean_milliwatts` fields are computed
-/// across all samples without weighting; on a multi-GPU run the
-/// mean reflects total observation time per device equally.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+/// `*_mean_percent` and `*_mean_milliwatts` fields at the top level
+/// are computed across all samples without weighting; on a multi-GPU
+/// run the mean reflects total observation time per device equally.
+/// For per-device means without cross-device mixing, read `per_device`.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct GpuMetrics {
     /// Number of samples in the timeline.
     pub sample_count: u32,
@@ -116,6 +150,11 @@ pub struct GpuMetrics {
     pub power_max_milliwatts: u32,
     /// Mean power draw across all samples, in milliwatts.
     pub power_mean_milliwatts: u32,
+    /// Per-device breakdown of the aggregates above, one entry per
+    /// `device_index`. Empty for single-device runs is impossible —
+    /// the timeline always has at least one device, but consumers
+    /// should treat absence as equivalent to a single-element vector.
+    pub per_device: Vec<GpuDeviceMetrics>,
 }
 
 /// The full report for one probe run: raw signals plus derived
