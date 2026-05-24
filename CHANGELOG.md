@@ -7,6 +7,33 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+- **CI green build restored.** Two issues introduced silently with the
+  v0.2.0 release (20 May) had left the `fmt` and `clippy` CI jobs red
+  on `main` for nine days, even though `cargo test` continued to pass.
+  Root causes: (1) `crates/is-sysmon/src/sampler.rs:209` used
+  `assert_eq!(..., true)` which triggers `clippy::bool_assert_comparison`
+  under the workspace's `-D warnings` policy, replaced with `assert!(...)`;
+  (2) seven files across the workspace had drifted from `rustfmt`
+  conformance, brought back in line with `cargo fmt --all`. Pure
+  formatting and one test-assertion idiom — no behavioural change.
+  A local `pre-push` git hook was added to the development environment
+  to run `cargo fmt --all --check` and `RUSTFLAGS="-D warnings" cargo
+  clippy --workspace --all-targets` before every push, blocking pushes
+  that would re-introduce the same class of regression. The `README.md`
+  claim of "CI gated on `-D warnings`" is once again truthful.
+
+### Added
+- **`Dockerfile`** at the repository root. Multi-stage build:
+  `rust:1.83-slim` compiles the `gpu-nvidia`-featured release binary,
+  `nvidia/cuda:13.0.2-runtime-ubuntu22.04` hosts only the binary +
+  `ca-certificates` for HTTPS calls to the inference endpoint. Runs as
+  non-root user `inferscope` (UID 1000). Final image: ~1.65 GB
+  compressed, verified buildable on Ubuntu 24.04 with Docker 29.5.2.
+  `ENTRYPOINT` is the binary, `CMD ["--help"]` so `docker run
+  inferscope` prints usage. OCI image labels populated for
+  `org.opencontainers.image.{title,description,source,licenses,authors}`.
+
 ## [0.2.1] — 2026-05-21
 
 ### Added
