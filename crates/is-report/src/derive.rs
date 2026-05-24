@@ -217,6 +217,82 @@ pub fn derive_gpu(timeline: &is_core::GpuTimeline) -> Option<crate::metrics::Gpu
     let power_sum: u64 = samples.iter().map(|s| s.power_draw_milliwatts as u64).sum();
     let power_mean_milliwatts = (power_sum / samples.len() as u64) as u32;
 
+    // Per-device aggregates (ADR-007). One entry per distinct
+    // device_index in the timeline, ordered ascending.
+    let mut per_device: Vec<crate::metrics::GpuDeviceMetrics> = timeline
+        .device_indices()
+        .iter()
+        .map(|&d| {
+            let dev_samples: Vec<&_> = samples.iter().filter(|s| s.device_index == d).collect();
+            let dev_sample_count = dev_samples.len() as u32;
+
+            let dev_mem_min = dev_samples
+                .iter()
+                .map(|s| s.memory_used_bytes)
+                .min()
+                .unwrap();
+            let dev_mem_max = dev_samples
+                .iter()
+                .map(|s| s.memory_used_bytes)
+                .max()
+                .unwrap();
+            let dev_mem_sum: u128 = dev_samples
+                .iter()
+                .map(|s| s.memory_used_bytes as u128)
+                .sum();
+            let dev_mem_mean = (dev_mem_sum / dev_samples.len() as u128) as u64;
+            let dev_mem_total = dev_samples.first().unwrap().memory_total_bytes;
+
+            let dev_util_min = dev_samples
+                .iter()
+                .map(|s| s.utilization_percent)
+                .min()
+                .unwrap();
+            let dev_util_max = dev_samples
+                .iter()
+                .map(|s| s.utilization_percent)
+                .max()
+                .unwrap();
+            let dev_util_sum: u32 = dev_samples
+                .iter()
+                .map(|s| s.utilization_percent as u32)
+                .sum();
+            let dev_util_mean = (dev_util_sum / dev_samples.len() as u32) as u8;
+
+            let dev_temp_max = dev_samples
+                .iter()
+                .map(|s| s.temperature_celsius)
+                .max()
+                .unwrap();
+            let dev_power_max = dev_samples
+                .iter()
+                .map(|s| s.power_draw_milliwatts)
+                .max()
+                .unwrap();
+            let dev_power_sum: u64 = dev_samples
+                .iter()
+                .map(|s| s.power_draw_milliwatts as u64)
+                .sum();
+            let dev_power_mean = (dev_power_sum / dev_samples.len() as u64) as u32;
+
+            crate::metrics::GpuDeviceMetrics {
+                device_index: d,
+                sample_count: dev_sample_count,
+                memory_used_min_bytes: dev_mem_min,
+                memory_used_max_bytes: dev_mem_max,
+                memory_used_mean_bytes: dev_mem_mean,
+                memory_total_bytes: dev_mem_total,
+                utilization_min_percent: dev_util_min,
+                utilization_max_percent: dev_util_max,
+                utilization_mean_percent: dev_util_mean,
+                temperature_max_celsius: dev_temp_max,
+                power_max_milliwatts: dev_power_max,
+                power_mean_milliwatts: dev_power_mean,
+            }
+        })
+        .collect();
+    per_device.sort_by_key(|d| d.device_index);
+
     Some(crate::metrics::GpuMetrics {
         sample_count,
         device_count,
@@ -230,10 +306,7 @@ pub fn derive_gpu(timeline: &is_core::GpuTimeline) -> Option<crate::metrics::Gpu
         temperature_max_celsius,
         power_max_milliwatts,
         power_mean_milliwatts,
-        // Per-device breakdown will be populated in a follow-up commit
-        // as part of ADR-007. For commit 1 (struct definition only)
-        // the field is initialised empty to keep behaviour unchanged.
-        per_device: Vec::new(),
+        per_device,
     })
 }
 
