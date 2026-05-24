@@ -102,6 +102,23 @@ GPU engines today, but on the main branch the resource portion reads
 
 ## Architecture
 
+```mermaid
+flowchart LR
+    Operator["Operator: CLI"] -->|"--endpoint --pid --gpu"| Binary["inferscope binary"]
+    Binary --> Probe["is-probe"]
+    Binary --> Sysmon["is-sysmon"]
+    Probe -->|"HTTPS POST /v1/chat/completions"| Engine[("Inference endpoint<br/>UNTRUSTED")]
+    Sysmon -->|"read"| Procfs[("/proc/PID<br/>kernel-enforced")]
+    Sysmon -->|"NVML read-only"| GPU[("libnvidia-ml<br/>driver")]
+    Probe --> Report["is-report"]
+    Sysmon --> Report
+    Report --> StdOut["stdout: human-readable"]
+    Report --> Json["--json: machine-readable"]
+    style Engine fill:#fef2f2,stroke:#dc2626
+    style Procfs fill:#f0fdf4,stroke:#16a34a
+    style GPU fill:#f0fdf4,stroke:#16a34a
+```
+
 inferscope is a Cargo workspace of five crates, each with a single
 responsibility:
 
