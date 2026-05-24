@@ -133,6 +133,17 @@ inferscope pins a minimum supported Rust version of 1.83 via
 The CLI binary lands at `target/release/inferscope`. Run
 `inferscope --help` for the full argument list.
 
+## Documentation
+
+| Document | Purpose |
+|---|---|
+| [`SECURITY.md`](SECURITY.md) | Threat model, controls, known limitations |
+| [`RUNBOOK.md`](RUNBOOK.md) | Seven failure modes operators commonly hit, with Detection–Diagnosis–Fix structure |
+| [`CHANGELOG.md`](CHANGELOG.md) | Version-by-version release notes |
+| [`docs/adr/`](docs/adr/) | Six Architecture Decision Records covering profiling scope, sampling correlation, GPU resource sampling, process-tree aggregation |
+| [`docs/runbooks/runpod-gpu-validation.md`](docs/runbooks/runpod-gpu-validation.md) | End-to-end procedure for validating GPU sampling on RunPod (~$1–2/run) |
+| [`Dockerfile`](Dockerfile) | Multi-stage build, non-root user, CUDA 13.0.2 runtime |
+
 ## Roadmap
 - **v0.1.0** (May 2026) — released. API-level profiling: token
   timing, `/proc`-based resource footprint correlation, text and
