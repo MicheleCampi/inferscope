@@ -1,0 +1,51 @@
+# docker-compose for local inferscope runs
+#
+# Builds the image from the repository's Dockerfile and runs inferscope
+# with GPU access. Adjust the `command` block to your engine endpoint
+# and model. Output is written to ./output/ on the host.
+#
+# Quick start:
+#   docker compose -f deploy/docker-compose.yml up --build
+#
+# To inspect the JSON report after the run:
+#   cat output/report.json | jq .
+#
+# Requires:
+#   - Docker 24+ (for compose v2 syntax)
+#   - NVIDIA Container Toolkit on the host
+#   - An OpenAI-compatible engine reachable from the container
+
+services:
+  inferscope:
+    build:
+      context: ..
+      dockerfile: Dockerfile
+    image: inferscope:local
+    container_name: inferscope-run
+
+    # GPU passthrough — requires NVIDIA Container Toolkit installed on host
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+
+    # Replace these flags with the ones for your actual run
+    command:
+      - --endpoint
+      - http://host.docker.internal:8080
+      - --model
+      - your-model-name
+      - --prompt
+      - "Hello, world"
+      - --gpu
+
+    # Mount host directory for JSON output (if using --json flag)
+    volumes:
+      - ./output:/home/inferscope/output
+
+    # If the engine runs on the same host, expose it through the host network
+    # extra_hosts:
+    #   - "host.docker.internal:host-gateway"

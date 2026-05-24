@@ -1,0 +1,92 @@
+# inferscope as a Kubernetes Job
+#
+# This is the minimal manifest for running inferscope as a one-shot
+# Job in a Kubernetes cluster. It is intended as a starting point,
+# not as production configuration — see deploy/README.md for the
+# trade-offs and alternative patterns (CronJob, Sidecar).
+#
+# Prerequisites:
+#   - A cluster with NVIDIA Device Plugin installed
+#     (https://github.com/NVIDIA/k8s-device-plugin)
+#   - The inferscope image published and pullable from the cluster
+#     (e.g. ghcr.io/michelecampi/inferscope:v0.2.1)
+#   - The inference engine reachable from the cluster network
+#
+# Apply with:
+#   kubectl apply -f deploy/inferscope-job.yaml
+#
+# Watch the run:
+#   kubectl logs -f job/inferscope-run
+#
+# Clean up:
+#   kubectl delete job inferscope-run
+
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: inferscope-run
+  labels:
+    app: inferscope
+    version: v0.2.1
+spec:
+  # Single attempt — profiling failure means investigate, not retry.
+  # See ADR-006 reasoning: retried profiling runs confound timing.
+  backoffLimit: 0
+
+  # Pod template
+  template:
+    metadata:
+      labels:
+        app: inferscope
+        version: v0.2.1
+    spec:
+      restartPolicy: Never
+
+      containers:
+        - name: inferscope
+          image: ghcr.io/michelecampi/inferscope:v0.2.1
+          imagePullPolicy: IfNotPresent
+
+          # Flags for the run — adjust to your endpoint and model.
+          # Override these via `kubectl create job --from=cronjob/...`
+          # or by templating this file with kustomize/helm.
+          args:
+            - --endpoint
+            - http://your-engine-service:8080
+            - --model
+            - your-model-name
+            - --prompt
+            - "Hello, world"
+            - --gpu
+            - --include-descendants
+
+          resources:
+            # Request one GPU from the Device Plugin.
+            # The cluster's node selectors/taints handle which node
+            # the pod lands on; that policy belongs to the operator,
+            # not to this manifest.
+            limits:
+              nvidia.com/gpu: 1
+              memory: "2Gi"
+              cpu: "1"
+            requests:
+              nvidia.com/gpu: 1
+              memory: "256Mi"
+              cpu: "100m"
+
+          # Mount a volume to persist the JSON report.
+          # Substitute the PVC name with one that exists in your cluster.
+          volumeMounts:
+            - name: output
+              mountPath: /home/inferscope/output
+
+      volumes:
+        - name: output
+          # Replace with PVC or emptyDir depending on persistence needs.
+          # emptyDir loses the JSON when the pod terminates;
+          # PVC preserves it for later inspection.
+          emptyDir: {}
+
+      # Optional: node selector for GPU pool
+      # nodeSelector:
+      #   nvidia.com/gpu.product: H100-SXM5-80GB
