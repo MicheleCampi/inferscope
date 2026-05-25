@@ -17,13 +17,21 @@
 //! - [`derive`]: the functions that compute metrics from the raw
 //!   signals.
 //! - [`render`]: text and JSON rendering of a report.
+//! - [`otel`] (feature `otel-export`): OpenTelemetry export of the
+//!   derived metrics as OTLP/HTTP spans. See ADR-008.
 
 pub mod derive;
 pub mod error;
 pub mod metrics;
 pub mod render;
 
+#[cfg(feature = "otel-export")]
+pub mod otel;
+
 pub use derive::{derive_gpu, derive_resource, derive_timing};
 pub use error::ReportError;
 pub use metrics::{GpuMetrics, LatencyDistribution, Report, ResourceMetrics, TimingMetrics};
 pub use render::{render_json, render_text};
+
+#[cfg(feature = "otel-export")]
+pub use otel::{export_to_otel, OtelExportError};

@@ -25,3 +25,9 @@ reqwest = { version = "0.12", features = ["json", "stream"] }
 clap = { version = "4", features = ["derive"] }
 libc = "0.2"
 nvml-wrapper = "0.12"
+
+# OpenTelemetry stack for the otel-export feature on is-report.
+# Coordinated release versions; all three should bump together.
+opentelemetry = { version = "0.32", default-features = false, features = ["trace"] }
+opentelemetry_sdk = { version = "0.32", default-features = false, features = ["trace", "rt-tokio"] }
+opentelemetry-otlp = { version = "0.32", default-features = false, features = ["trace", "http-proto", "hyper-client"] }
