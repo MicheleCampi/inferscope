@@ -569,4 +569,42 @@ mod tests {
         assert_eq!(m.sample_count, 4);
         assert_eq!(m.device_count, 4);
     }
+
+    #[test]
+    fn derive_gpu_populates_per_device_for_multi_gpu_run() {
+        let mut tl = is_core::GpuTimeline::new(50_000_000);
+        // Simulate a TP=2 run on a 4-GPU host: GPU 0 and 1 carry work,
+        // GPU 2 and 3 sit at idle floor. Two sample ticks per device
+        // (t=0 and t=50ms), eight samples total.
+        for elapsed in [0u64, 50_000_000] {
+            tl.push(gpu_sample(elapsed, 0, 2_000_000_000, 30, 50, 150_000));
+            tl.push(gpu_sample(elapsed, 1, 3_000_000_000, 40, 55, 160_000));
+            tl.push(gpu_sample(elapsed, 2, 0, 0, 33, 34_000));
+            tl.push(gpu_sample(elapsed, 3, 0, 0, 34, 32_000));
+        }
+        let m = derive_gpu(&tl).expect("non-empty");
+        assert_eq!(m.sample_count, 8);
+        assert_eq!(m.device_count, 4);
+        // per_device must have exactly one entry per distinct device,
+        // sorted ascending by device_index.
+        assert_eq!(m.per_device.len(), 4);
+        assert_eq!(m.per_device[0].device_index, 0);
+        assert_eq!(m.per_device[1].device_index, 1);
+        assert_eq!(m.per_device[2].device_index, 2);
+        assert_eq!(m.per_device[3].device_index, 3);
+        // Each device contributed two samples.
+        for d in &m.per_device {
+            assert_eq!(d.sample_count, 2);
+        }
+        // Busy device (GPU 1) shows the populated values, not zero.
+        assert_eq!(m.per_device[1].memory_used_max_bytes, 3_000_000_000);
+        assert_eq!(m.per_device[1].utilization_mean_percent, 40);
+        assert_eq!(m.per_device[1].power_mean_milliwatts, 160_000);
+        assert_eq!(m.per_device[1].temperature_max_celsius, 55);
+        // Idle device (GPU 3) shows the idle floor — the whole point
+        // of per-device: this asymmetry is visible, not averaged away.
+        assert_eq!(m.per_device[3].memory_used_max_bytes, 0);
+        assert_eq!(m.per_device[3].utilization_mean_percent, 0);
+        assert_eq!(m.per_device[3].power_mean_milliwatts, 32_000);
+    }
 }
