@@ -64,6 +64,12 @@ pub enum OtelExportError {
 /// error and continue; export failure should never fail the calling
 /// run.
 ///
+/// **Runtime requirement.** This function constructs an HTTP client
+/// via hyper and therefore must be called from within a tokio runtime
+/// context (i.e. inside `Runtime::block_on` or a `#[tokio::main]`
+/// function). The inferscope binary already satisfies this because
+/// the orchestrator runs inside `Runtime::block_on`.
+///
 /// Behaviour:
 ///
 /// - A single root span `inferscope.run` is created and immediately
@@ -229,4 +235,85 @@ pub fn export_to_otel(report: &Report, endpoint: &str) -> Result<(), OtelExportE
         })?;
 
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    //! These tests exercise the error-handling paths of
+    //! [`export_to_otel`] without standing up a real OTLP
+    //! collector. The happy-path is validated manually with a
+    //! local Jaeger or OTel Collector during release qualification;
+    //! see RUNBOOK.md.
+    //!
+    //! Both tests assert only that an Err is returned, not which
+    //! variant: opentelemetry-otlp 0.32 may catch malformed
+    //! endpoints during builder construction (SetupFailed) or
+    //! during the first flush (ExportFailed), and that detail is
+    //! a transitive-dependency implementation choice we should not
+    //! pin a test against.
+
+    use super::*;
+    use crate::{LatencyDistribution, TimingMetrics};
+    use is_core::{RequestTiming, TokenArrival};
+
+    /// Minimal Report with three token arrivals, no resource or GPU
+    /// timeline. Just enough to exercise the span-construction path.
+    fn sample_report() -> Report {
+        Report {
+            request_timing: RequestTiming::new(
+                vec![
+                    TokenArrival::new(0, 412_000_000),
+                    TokenArrival::new(1, 458_000_000),
+                    TokenArrival::new(2, 504_000_000),
+                ],
+                550_000_000,
+            ),
+            resource_timeline: None,
+            gpu_timeline: None,
+            timing: TimingMetrics {
+                token_count: 3,
+                ttft_ns: Some(412_000_000),
+                total_latency_ns: 550_000_000,
+                tokens_per_second: Some(21.74),
+                inter_token_latency: Some(LatencyDistribution {
+                    count: 2,
+                    mean_ns: 46_000_000,
+                    p50_ns: 46_000_000,
+                    p95_ns: 46_000_000,
+                    p99_ns: 46_000_000,
+                    max_ns: 46_000_000,
+                }),
+            },
+            resource: None,
+            gpu: None,
+        }
+    }
+
+    /// Build a single-threaded tokio runtime suitable for running
+    /// `export_to_otel` synchronously in a unit test. The function
+    /// builds a hyper client internally and requires an active tokio
+    /// context.
+    fn run_in_tokio<F, T>(f: F) -> T
+    where
+        F: FnOnce() -> T,
+    {
+        let rt = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .expect("test runtime should build");
+        rt.block_on(async { f() })
+    }
+
+    /// An endpoint that is not a valid URL must produce an Err.
+    /// We accept either SetupFailed (caught at builder time) or
+    /// ExportFailed (caught at flush time).
+    #[test]
+    fn export_returns_err_for_invalid_endpoint_url() {
+        let report = sample_report();
+        let result = run_in_tokio(|| export_to_otel(&report, "not a url at all"));
+        assert!(
+            result.is_err(),
+            "expected export to fail for malformed endpoint, got {result:?}"
+        );
+    }
 }
