@@ -42,6 +42,9 @@ pub fn render_text(report: &Report) -> String {
     if let Some(gpu) = &report.gpu {
         out.push('\n');
         render_gpu_usage(&mut out, gpu);
+        if gpu.device_count > 1 {
+            render_per_device_gpu_usage(&mut out, gpu);
+        }
     }
 
     out
@@ -176,6 +179,25 @@ fn render_gpu_usage(out: &mut String, gpu: &crate::metrics::GpuMetrics) {
         gpu.power_max_milliwatts as f64 / 1000.0,
         gpu.power_mean_milliwatts as f64 / 1000.0,
     );
+}
+
+/// Renders one line per GPU device showing the headline metrics
+/// for that device only. Invoked after `render_gpu_usage` when
+/// `device_count > 1`, to surface per-device asymmetry that the
+/// cluster aggregate hides. See ADR-007.
+fn render_per_device_gpu_usage(out: &mut String, gpu: &crate::metrics::GpuMetrics) {
+    let _ = writeln!(out, "Per-device GPU usage:");
+    for dev in &gpu.per_device {
+        let _ = writeln!(
+            out,
+            "  GPU {}:  VRAM {} | SM mean {}% | power mean {:.1} W | temp peak {} C",
+            dev.device_index,
+            format_bytes(dev.memory_used_max_bytes),
+            dev.utilization_mean_percent,
+            dev.power_mean_milliwatts as f64 / 1000.0,
+            dev.temperature_max_celsius,
+        );
+    }
 }
 
 /// Formats a nanosecond duration as a short human-readable string.
