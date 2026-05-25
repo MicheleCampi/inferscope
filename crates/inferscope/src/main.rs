@@ -220,5 +220,15 @@ async fn orchestrate(args: Args) -> Result<(), String> {
         print!("{}", render_text(&report));
     }
 
+    // Optional OpenTelemetry export. Failure is logged but does not
+    // change the exit code: observability is secondary to the
+    // profiling result. See ADR-008.
+    #[cfg(feature = "otel-export")]
+    if let Some(endpoint) = args.otel_endpoint.as_deref() {
+        if let Err(e) = is_report::export_to_otel(&report, endpoint) {
+            eprintln!("inferscope: OpenTelemetry export failed: {e}");
+        }
+    }
+
     Ok(())
 }

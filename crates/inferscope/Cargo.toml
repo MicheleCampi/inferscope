@@ -26,3 +26,6 @@ serde_json.workspace = true
 default = []
 gpu-nvidia = ["is-sysmon/gpu-nvidia"]
 gpu-amd = ["is-sysmon/gpu-amd"]
+# Forward the otel-export feature to is-report. Adds the
+# --otel-endpoint CLI flag and the post-render export call.
+otel-export = ["is-report/otel-export"]

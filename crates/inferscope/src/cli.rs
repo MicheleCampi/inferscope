@@ -89,6 +89,29 @@ pub struct Args {
     /// metrics per ADR-004.
     #[arg(long, default_value_t = false)]
     pub json: bool,
+
+    /// OTLP/HTTP endpoint to which the report is exported as an
+    /// OpenTelemetry trace after the run completes.
+    ///
+    /// When supplied, after the report is rendered to stdout
+    /// inferscope opens a root span `inferscope.run` and emits
+    /// it via OTLP/HTTP to the given endpoint. Token arrivals
+    /// become span events; the derived aggregates become span
+    /// attributes. See ADR-008.
+    ///
+    /// Pass the base URL of the OTLP receiver, not the full
+    /// `/v1/traces` path. Example: `http://localhost:4318`. Also
+    /// reads the standard `OTEL_EXPORTER_OTLP_ENDPOINT`
+    /// environment variable if the flag is not supplied.
+    ///
+    /// Export failure does not change the inferscope exit code;
+    /// a warning is printed to stderr and the run is treated as
+    /// successful.
+    ///
+    /// Only available when built with `--features otel-export`.
+    #[cfg(feature = "otel-export")]
+    #[arg(long, env = "OTEL_EXPORTER_OTLP_ENDPOINT")]
+    pub otel_endpoint: Option<String>,
 }
 
 impl Args {
@@ -231,5 +254,46 @@ mod tests {
         ])
         .expect("args should parse with --include-descendants");
         assert!(args.include_descendants);
+    }
+
+    /// With the `otel-export` feature enabled, `--otel-endpoint`
+    /// is a valid optional flag and defaults to `None`.
+    #[cfg(feature = "otel-export")]
+    #[test]
+    fn otel_endpoint_defaults_to_none_when_feature_enabled() {
+        let args = Args::try_parse_from([
+            "inferscope",
+            "--endpoint",
+            "http://localhost:8080",
+            "--model",
+            "llama3",
+            "--prompt",
+            "hi",
+        ])
+        .expect("args should parse without --otel-endpoint");
+        assert_eq!(args.otel_endpoint, None);
+    }
+
+    /// With the `otel-export` feature enabled, `--otel-endpoint`
+    /// accepts a URL.
+    #[cfg(feature = "otel-export")]
+    #[test]
+    fn otel_endpoint_parses_when_supplied() {
+        let args = Args::try_parse_from([
+            "inferscope",
+            "--endpoint",
+            "http://localhost:8080",
+            "--model",
+            "llama3",
+            "--prompt",
+            "hi",
+            "--otel-endpoint",
+            "http://collector:4318",
+        ])
+        .expect("args should parse with --otel-endpoint");
+        assert_eq!(
+            args.otel_endpoint,
+            Some("http://collector:4318".to_string())
+        );
     }
 }
