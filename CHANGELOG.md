@@ -7,7 +7,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-### Fixed
+## [0.3.0] — 2026-05-25
+
+### Added
+
+- **Per-device GPU metrics in the JSON output.** The `gpu` section now
+  includes a `per_device: Vec<GpuDeviceMetrics>` field with one entry
+  per distinct `device_index` in the timeline, sorted ascending. Each
+  entry carries the same set of aggregates the top-level cluster block
+  computes (`sample_count`, VRAM min/max/mean, `memory_total_bytes`,
+  utilisation min/max/mean, peak temperature, power peak/mean), but
+  restricted to one device's samples. Cluster-wide aggregates remain
+  unchanged for backward compatibility. The new field is additive;
+  consumers reading only the top-level `gpu.*` continue to work.
+  See [ADR-007](docs/adr/007-per-device-gpu-metrics.md).
+- **`GpuDeviceMetrics` struct** in `is-report::metrics`. Twelve fields:
+  `device_index`, `sample_count`, plus the ten metric fields that
+  match `GpuMetrics`. Implements `Debug, Clone, PartialEq, Eq,
+  Serialize, Deserialize`. Not `Copy` (intentional: the type appears
+  in `Vec<GpuDeviceMetrics>` which is not `Copy`-compatible).
+- **Per-device GPU block in the text report.** When `device_count > 1`,
+  `render_text` emits a "Per-device GPU usage:" block after the
+  existing cluster-wide block, with one compact line per device:
+  `GPU N:  VRAM <peak> | SM mean <%> | power mean <W> | temp peak <C>`.
+  Single-GPU runs produce identical output to v0.2.x (no new block).
 - **CI green build restored.** Two issues introduced silently with the
   v0.2.0 release (20 May) had left the `fmt` and `clippy` CI jobs red
   on `main` for nine days, even though `cargo test` continued to pass.
@@ -22,8 +45,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   clippy --workspace --all-targets` before every push, blocking pushes
   that would re-introduce the same class of regression. The `README.md`
   claim of "CI gated on `-D warnings`" is once again truthful.
-
-### Added
 - **`Dockerfile`** at the repository root. Multi-stage build:
   `rust:1.83-slim` compiles the `gpu-nvidia`-featured release binary,
   `nvidia/cuda:13.0.2-runtime-ubuntu22.04` hosts only the binary +
@@ -33,6 +54,61 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `ENTRYPOINT` is the binary, `CMD ["--help"]` so `docker run
   inferscope` prints usage. OCI image labels populated for
   `org.opencontainers.image.{title,description,source,licenses,authors}`.
+- **GitHub Action `docker-publish.yml`** that builds the Dockerfile
+  and pushes the image to GHCR on git tag push matching `v*.*.*`, or
+  on manual `workflow_dispatch`. Uses `docker/setup-buildx-action@v3`,
+  `docker/login-action@v3`, `docker/metadata-action@v5`, and
+  `docker/build-push-action@v6` with GitHub Actions cache
+  (`type=gha, mode=max`) for incremental rebuilds. Auto-generated tags
+  on push of `v0.3.0`: `0.3.0`, `0.3`, `0`, `latest`. The image is
+  publicly pullable from `ghcr.io/michelecampi/inferscope`.
+- **`deploy/` directory** with example deployment manifests:
+  `docker-compose.yml` for local runs with NVIDIA Container Toolkit,
+  `inferscope-job.yaml` as a Kubernetes Job example (NVIDIA Device
+  Plugin resource request, `backoffLimit: 0`, commented `nodeSelector`
+  for GPU-pool targeting), and `README.md` documenting the design
+  trade-offs (Job vs Deployment, no-retry policy, image pinning) and
+  what the directory does not cover (CronJob, Sidecar, Helm, image
+  signing). Explicitly framed as example material, not production
+  configuration.
+- **`benchmarks/` directory** with three files of verified
+  cross-hardware data: `cross-hardware-comparison.md` (L4 vs H100 vs
+  4×A40 on Qwen 2.5 0.5B/7B/32B Q4_K_M), `multi-device-validation.md`
+  (4×A40 TP=2 single-socket vs TP=4 cross-socket deep dive),
+  `vllm-vs-llama-cpp.md` (vLLM 0.21 vs llama.cpp b9165 head-to-head
+  on H100 with cold/warm-outlier/warm-steady three-run methodology).
+  All numbers pulled directly from inferscope JSON output and the
+  per-run summary report; the discrepancy between aggregate and
+  per-device readings on multi-GPU runs is documented as the
+  motivation for ADR-007.
+- **`SECURITY.md`** with explicit threat model, controls, and known
+  limitations (single-maintainer SPOF, unsigned image, no SAST/fuzz
+  coverage). Cross-references `RUNBOOK.md` for operational failure
+  modes and ADR-005 for the GPU sampling threat surface.
+- **`RUNBOOK.md`** at the repository root with seven failure scenarios
+  drawn from real RunPod validation runs, each structured Detection →
+  Diagnosis → Fix → Root Cause → Prevention. Scenarios cover the
+  wrapper-PID pitfall, GPU sampling unavailable, connection refused
+  from the engine, HTTP 4xx/5xx from the endpoint, sparse GPU samples,
+  build failures with the `gpu-nvidia` feature, and Docker GPU
+  passthrough failures.
+- **Architecture diagram in README.** Mermaid `flowchart LR` showing
+  the runtime data flow: operator → CLI → is-probe (untrusted endpoint
+  in red) and is-sysmon (trusted `/proc` and NVML in green) → is-report
+  → stdout + JSON. Replaces the text-only Architecture description.
+- **Documentation section in README** with a table linking the eight
+  major reference assets: SECURITY, RUNBOOK, CHANGELOG, the ADR
+  directory, the RunPod GPU validation runbook, the Dockerfile,
+  the `deploy/` directory, and the `benchmarks/` directory.
+
+### Changed
+
+- **`GpuMetrics` no longer derives `Copy`.** The new `per_device:
+  Vec<GpuDeviceMetrics>` field is not `Copy`-compatible. Consumers
+  that assigned `GpuMetrics` by copy semantics (`let m2 = m1;`) now
+  move it; the standard Rust pattern. No call site in the workspace
+  was affected. The struct still derives `Debug, Clone, PartialEq,
+  Eq, Serialize, Deserialize`.
 
 ## [0.2.1] — 2026-05-21
 
@@ -242,7 +318,8 @@ The first public release of inferscope.
   unrelated process, sysmon will faithfully sample that process.
   A user must still ensure the PID is the right one.
 
-[Unreleased]: https://github.com/MicheleCampi/inferscope/compare/v0.2.1...HEAD
+[Unreleased]: https://github.com/MicheleCampi/inferscope/compare/v0.3.0...HEAD
+[0.3.0]: https://github.com/MicheleCampi/inferscope/compare/v0.2.1...v0.3.0
 [0.2.1]: https://github.com/MicheleCampi/inferscope/compare/v0.2.0...v0.2.1
 [0.2.0]: https://github.com/MicheleCampi/inferscope/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/MicheleCampi/inferscope/releases/tag/v0.1.0
