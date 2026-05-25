@@ -1,7 +1,9 @@
 # ADR-007: Per-Device GPU Metrics in the Report Schema
 
-- **Status**: Proposed
+- **Status**: Accepted
 - **Date**: 2026-05-24
+- **Accepted**: 2026-05-25
+- **Implemented in**: v0.3.0
 - **Deciders**: Michele Campi
 
 ## Context

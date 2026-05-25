@@ -19,7 +19,7 @@ left intact as a historical record.
 | [ADR-004](004-report-metrics-and-format.md) | Report Metrics and Output Format | Accepted |
 | [ADR-005](005-gpu-resource-sampling.md) | GPU Resource Sampling | Accepted |
 | [ADR-006](006-process-tree-aggregation.md) | Process Tree Aggregation for Sysmon | Accepted |
-| [ADR-007](007-per-device-gpu-metrics.md) | Per-Device GPU Metrics in the Report Schema | Proposed |
+| [ADR-007](007-per-device-gpu-metrics.md) | Per-Device GPU Metrics in the Report Schema | Accepted |
 
 ## Format
 
