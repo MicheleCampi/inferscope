@@ -80,6 +80,33 @@ The same run with `--json` produces a single document carrying both
 the raw per-token timestamps and the derived metrics, so a consumer
 can recompute differently without re-running the probe.
 
+Built with `--features otel-export`, inferscope can additionally
+emit the same report as an OpenTelemetry trace via OTLP/HTTP:
+
+```
+$ docker run -d --rm --name jaeger -p 4318:4318 -p 16686:16686 \
+    jaegertracing/all-in-one:latest
+
+$ inferscope \
+    --endpoint http://127.0.0.1:8080 \
+    --model qwen \
+    --prompt "Write three short sentences about Italian coffee." \
+    --max-tokens 80 \
+    --pid 3319 \
+    --otel-endpoint http://127.0.0.1:4318
+
+# Open http://127.0.0.1:16686 in a browser to see the Jaeger UI.
+```
+
+The Jaeger UI then renders the run as a single `inferscope.run`
+span with one `token.arrival` event per generated token on the
+timeline, plus the derived aggregates as span attributes. Token
+arrivals appear at their correct positions on the wall clock,
+making the inter-token cadence directly readable. The standard
+`OTEL_EXPORTER_OTLP_ENDPOINT` env var is honoured if the flag is
+not supplied. Design recorded in
+[ADR-008](docs/adr/008-opentelemetry-export.md).
+
 ## Scope
 
 v0.1.0 is built on **API-level profiling**: the engine is treated
@@ -150,14 +177,26 @@ inferscope pins a minimum supported Rust version of 1.83 via
 The CLI binary lands at `target/release/inferscope`. Run
 `inferscope --help` for the full argument list.
 
+Optional Cargo features:
+
+- `gpu-nvidia` — enables NVML-based GPU sampling and the `--gpu`
+  flag. Requires the NVIDIA driver and `libnvidia-ml.so` at runtime.
+- `otel-export` — enables OpenTelemetry export via OTLP/HTTP and
+  the `--otel-endpoint` flag. Adds roughly nine transitive crates;
+  the default build is unchanged.
+
+Combine features as needed:
+
+    cargo build --release --features "gpu-nvidia otel-export"
+
 ## Documentation
 
 | Document | Purpose |
 |---|---|
 | [`SECURITY.md`](SECURITY.md) | Threat model, controls, known limitations |
-| [`RUNBOOK.md`](RUNBOOK.md) | Seven failure modes operators commonly hit, with Detection–Diagnosis–Fix structure |
+| [`RUNBOOK.md`](RUNBOOK.md) | Eight failure modes operators commonly hit, with Detection–Diagnosis–Fix structure |
 | [`CHANGELOG.md`](CHANGELOG.md) | Version-by-version release notes |
-| [`docs/adr/`](docs/adr/) | Six Architecture Decision Records covering profiling scope, sampling correlation, GPU resource sampling, process-tree aggregation |
+| [`docs/adr/`](docs/adr/) | Eight Architecture Decision Records covering profiling scope, sampling correlation, GPU resource sampling, process-tree aggregation, per-device GPU metrics, OpenTelemetry export |
 | [`docs/runbooks/runpod-gpu-validation.md`](docs/runbooks/runpod-gpu-validation.md) | End-to-end procedure for validating GPU sampling on RunPod (~$1–2/run) |
 | [`benchmarks/`](benchmarks/) | Cross-hardware comparison (L4/H100/4×A40), multi-device deep-dive, and vLLM vs llama.cpp head-to-head on H100 |
 | [`Dockerfile`](Dockerfile) | Multi-stage build, non-root user, CUDA 13.0.2 runtime |

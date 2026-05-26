@@ -248,6 +248,40 @@ GPU passthrough to containers is a host-and-runtime configuration concern, not a
 
 The repository's `/deploy/` folder (when published) will include a working `docker-compose.yml` and Kubernetes Job manifest with the GPU resource request correctly set, so users can copy-paste a known-good configuration.
 
+## Scenario 8 — OpenTelemetry export failed
+
+`--otel-endpoint` was supplied but `inferscope` reports the export did not succeed.
+
+### Detection
+
+- The stderr warning `inferscope: OpenTelemetry export failed: <error>` appears immediately after the report is printed.
+- The Jaeger / Tempo / Honeycomb UI shows no `inferscope.run` span for this run.
+- The exit code is still `0` — export failure does not fail the run by design (per ADR-008).
+
+### Diagnosis (2 minutes)
+
+1. Check the feature: the binary must be built with `--features otel-export`. The published Docker image currently does not include this feature by default; a binary built with `cargo install inferscope` without the flag will not even expose `--otel-endpoint` in `--help`.
+2. Check the endpoint shape: the value passed to `--otel-endpoint` is the **base URL** of the OTLP receiver (e.g. `http://localhost:4318`), **not** the full `/v1/traces` path. opentelemetry-otlp appends the path itself per the OTLP/HTTP spec.
+3. Check the collector is reachable: `curl -v http://<host>:<port>/v1/traces` from the same machine. A `405 Method Not Allowed` is a success signal here — it confirms the endpoint exists and rejects GET. A connection refused, DNS failure, or TLS error tells you the receiver is not reachable.
+4. Check the receiver supports OTLP/HTTP protobuf on the configured port. Jaeger all-in-one listens on `:4318` for OTLP/HTTP by default; the OTel Collector and Tempo defaults match. gRPC receivers on `:4317` will reject the protobuf-over-HTTP payload.
+5. Inspect the error message: `SetupFailed(...)` means the builder rejected the URL syntactically; `ExportFailed { endpoint, message }` means the transport tried and got an error from the receiver.
+
+### Fix
+
+- **Feature missing**: rebuild from source with `cargo build --release --features otel-export`, or use a binary explicitly built with the feature. The Docker image will gain a `-otel` tag variant in a future release.
+- **Wrong port**: switch the endpoint to the OTLP/HTTP port of the collector (Jaeger `:4318`, not `:14268` and not `:4317`).
+- **Wrong path**: drop the `/v1/traces` suffix from the URL passed on the command line; the library adds it.
+- **Collector down**: start the collector. For a quick local check, `docker run -d --rm --name jaeger -p 4318:4318 -p 16686:16686 jaegertracing/all-in-one:latest` is enough.
+- **TLS to a collector behind HTTPS**: the current `otel-export` build uses hyper without TLS features. Either terminate TLS at a sidecar (envoy, an OTel Collector with `otlphttp` exporter as a hop), or wait for a future revision that enables `hyper-tls`.
+
+### Root cause
+
+The OTel export is a thin wrapper around opentelemetry-otlp 0.32. It can fail for the same reasons any HTTP client can fail: bad URL, no listener, wrong port, wrong path, no TLS support. The failure is logged and the run continues because, by design, observability is secondary to the profiling result — the JSON and text reports are still emitted on stdout regardless.
+
+### Prevention
+
+For a local development loop, run Jaeger all-in-one in a long-lived background container and point inferscope at it. For CI and shared environments, terminate TLS at an OTel Collector sidecar and have inferscope talk to it over plain HTTP on the loopback. Document the endpoint and port in the team's runbook so users do not guess.
+
 ---
 
 ## Cross-cutting diagnostics
@@ -269,3 +303,4 @@ For build issues, `cargo build --release --features gpu-nvidia --verbose` shows 
 ## Changelog
 
 - **2026-05-24**: Initial runbook published. Reflects v0.2.1 with `--include-descendants`, `gpu-nvidia` feature, Dockerfile multi-stage. Seven scenarios based on failure modes observed during L4 (RunPod), H100 (RunPod), 4×A40 multi-GPU (RunPod), and vLLM 0.21 (RunPod) validation runs over May 2026.
+- **2026-05-26**: Added Scenario 8 for OpenTelemetry export failure, covering the `--otel-endpoint` flag introduced post-v0.3.0 (ADR-008). Scenario derived from local Jaeger validation and from the predictable transport-layer failure modes; no production OTel incidents have been observed yet.
