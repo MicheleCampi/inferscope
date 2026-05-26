@@ -7,6 +7,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **OpenTelemetry export via OTLP/HTTP.** Built with `--features otel-export`, inferscope can emit a derived report as a single OpenTelemetry trace to any OTLP/HTTP receiver (Jaeger, Tempo, Honeycomb, Datadog APM, OTel Collector). One root span `inferscope.run` carries the derived aggregates as attributes; each token arrival is attached as a span event named `token.arrival` with `token.index` and `token.elapsed_ns` attributes, timestamped at `run_start + elapsed_ns` so trace UIs render the per-token cadence on the timeline. Design recorded in ADR-008.
+- **`--otel-endpoint` CLI flag** on the `inferscope` binary, available only when built with the `otel-export` feature. Accepts the base URL of the OTLP receiver (e.g. `http://localhost:4318`); the library appends `/v1/traces` per the OTLP/HTTP spec. The standard `OTEL_EXPORTER_OTLP_ENDPOINT` env var is honoured if the flag is not supplied.
+- **Public function `is_report::export_to_otel(&Report, &str)`**, gated on the `otel-export` feature of the `is-report` crate. Returns `Result<(), OtelExportError>`; the CLI logs export failures to stderr without changing the exit code, so observability remains secondary to the profiling result.
+
+### Documentation
+
+- **ADR-008: OpenTelemetry Export of Inferscope Reports** added under `docs/adr/`, with Context (the operational gap that ADR-004's stdout-only contract leaves), Decision (one root span, token arrivals as events, OTLP/HTTP over hyper, opt-in feature flag), Consequences (positive/negative/neutral), and six Alternatives Considered (OTLP/gRPC and reqwest-client rejected for MSRV reasons, multiple child spans per token rejected as the wrong OTel-semantic shape, OTel Metrics signal deferred, OTLP/JSON rejected for ecosystem maturity, hand-rolled OTLP rejected for maintenance cost, separate is-otel crate rejected as over-fragmentation).
+- **README.md** gains a Quick example block showing the Jaeger all-in-one Docker setup, the inferscope invocation with `--otel-endpoint`, and what the resulting trace looks like in the Jaeger UI. The Building section gains a new Optional Cargo features list documenting both `gpu-nvidia` and `otel-export` with a combine-features example.
+- **RUNBOOK.md** gains Scenario 8 — "OpenTelemetry export failed", following the same Detection / Diagnosis / Fix / Root cause / Prevention structure as the other scenarios. Five diagnosis steps and five fixes covering the predictable transport-layer failure modes.
+
+### Internal
+
+- **`opentelemetry`, `opentelemetry_sdk`, `opentelemetry-otlp` 0.32** added as workspace dependencies, pinned to the same minor version to keep the trio coordinated. The OTLP exporter uses the `http-proto` + `hyper-client` Cargo features rather than `reqwest-client`, because the reqwest path transitively pulls reqwest 0.13 which requires Rust 1.85; hyper keeps the workspace MSRV at 1.83.
+- **`clap` workspace dependency** gains the `env` feature, enabling the `env = "OTEL_EXPORTER_OTLP_ENDPOINT"` attribute on the new CLI flag and making the standard env var support available to any future arg.
+- **Unit test for the error path** of `export_to_otel`: a syntactically invalid endpoint URL must produce an `Err`. The test wraps the call in a single-threaded tokio runtime since the function builds a hyper HTTP client internally and hyper requires an active tokio reactor. A second test against an unreachable port was prototyped but removed: opentelemetry-otlp 0.32's shutdown path waits past the build-in timeout when the collector is unreachable, hanging the test process. A proper end-to-end test using wiremock is tracked as a follow-up.
+
+
 ## [0.3.0] — 2026-05-25
 
 ### Added
