@@ -20,6 +20,7 @@ left intact as a historical record.
 | [ADR-005](005-gpu-resource-sampling.md) | GPU Resource Sampling | Accepted |
 | [ADR-006](006-process-tree-aggregation.md) | Process Tree Aggregation for Sysmon | Accepted |
 | [ADR-007](007-per-device-gpu-metrics.md) | Per-Device GPU Metrics in the Report Schema | Accepted |
+| [ADR-008](008-opentelemetry-export.md) | OpenTelemetry Export of Inferscope Reports | Accepted |
 
 ## Format
 
