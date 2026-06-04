@@ -9,13 +9,16 @@
 mod cli;
 
 use std::process::ExitCode;
-use std::time::Instant;
+use std::time::{Duration, Instant};
 
 use clap::Parser;
 use tokio::sync::oneshot;
 
 use is_probe::{config::ProbeConfig, runner::run as run_probe};
-use is_report::{derive_gpu, derive_resource, derive_timing, render_json, render_text, Report};
+use is_report::{
+    derive_gpu, derive_resource, derive_timing, render_json, render_resource_json, render_text,
+    Report, ResourceReport,
+};
 use is_sysmon::{config::SysmonConfig, sampler::sample_during};
 
 #[cfg(feature = "gpu-nvidia")]
@@ -76,10 +79,26 @@ async fn orchestrate(args: Args) -> Result<(), String> {
         }
     }
 
+    // Sample-only mode returns here: no probe, just resource sampling
+    // for a fixed duration while an external load generator drives traffic.
+    if args.sample_only {
+        return run_sample_only(&args, start).await;
+    }
+
+    // In the normal (non sample-only) path, clap guarantees endpoint,
+    // model, and prompt are present via `required_unless_present =
+    // "sample_only"`. The sample-only path returns earlier (above) and
+    // never reaches here, so these unwraps cannot fire.
     let probe_cfg = ProbeConfig::new(
-        args.endpoint.clone(),
-        args.model.clone(),
-        args.prompt.clone(),
+        args.endpoint
+            .clone()
+            .expect("endpoint is required unless --sample-only"),
+        args.model
+            .clone()
+            .expect("model is required unless --sample-only"),
+        args.prompt
+            .clone()
+            .expect("prompt is required unless --sample-only"),
         args.max_tokens,
     );
 
@@ -230,5 +249,100 @@ async fn orchestrate(args: Args) -> Result<(), String> {
         }
     }
 
+    Ok(())
+}
+
+/// Runs sample-only mode: attaches to an already-running PID and
+/// samples its resource usage (and optionally per-device GPU usage)
+/// for a fixed duration, WITHOUT issuing any inference request.
+///
+/// Cancellation is driven by a timer of `duration_secs` rather than
+/// by probe completion (there is no probe here). Emits a
+/// resource-only report. See ADR-009.
+async fn run_sample_only(args: &Args, start: Instant) -> Result<(), String> {
+    let pid = args
+        .pid
+        .ok_or_else(|| "--sample-only requires --pid".to_string())?;
+    let duration_secs = args
+        .duration_secs
+        .ok_or_else(|| "--sample-only requires --duration-secs".to_string())?;
+    let duration = Duration::from_secs(duration_secs);
+
+    // Spawn the /proc sampler, cancelled by a timer below.
+    let cfg = SysmonConfig::with_period(pid, args.sample_period());
+    let cfg = if args.include_descendants {
+        cfg.with_descendants()
+    } else {
+        cfg
+    };
+    let (sysmon_cancel_tx, sysmon_cancel_rx) = oneshot::channel();
+    let sysmon_task = tokio::spawn(sample_during(cfg, start, sysmon_cancel_rx));
+
+    // Spawn the GPU sampler if requested and the feature is present.
+    #[cfg(feature = "gpu-nvidia")]
+    let gpu_handle = if args.gpu {
+        match GpuSampler::new() {
+            Ok(sampler) => {
+                let gcfg = SysmonConfig::with_period(0, args.sample_period());
+                let (cancel_tx, cancel_rx) = oneshot::channel();
+                let task = tokio::spawn(sample_gpu_during(sampler, gcfg, start, cancel_rx));
+                Some((task, cancel_tx))
+            }
+            Err(e) => {
+                eprintln!("inferscope: warning: GPU sampling requested but unavailable: {e}");
+                None
+            }
+        }
+    } else {
+        None
+    };
+
+    // Sample for the requested duration, then cancel.
+    tokio::time::sleep(duration).await;
+
+    let _ = sysmon_cancel_tx.send(());
+    let resource_timeline = match sysmon_task.await {
+        Ok(tl) => Some(tl),
+        Err(e) => {
+            eprintln!("inferscope: warning: sysmon task ended abnormally: {e}");
+            None
+        }
+    };
+
+    #[cfg(feature = "gpu-nvidia")]
+    let gpu_timeline = if let Some((task, cancel_tx)) = gpu_handle {
+        let _ = cancel_tx.send(());
+        match task.await {
+            Ok(tl) => Some(tl),
+            Err(e) => {
+                eprintln!("inferscope: warning: GPU sampler task ended abnormally: {e}");
+                None
+            }
+        }
+    } else {
+        None
+    };
+    #[cfg(not(feature = "gpu-nvidia"))]
+    let gpu_timeline: Option<is_core::GpuTimeline> = None;
+
+    let resource = match resource_timeline.as_ref() {
+        Some(tl) => derive_resource(tl).map_err(|e| format!("report derivation failed: {e}"))?,
+        None => None,
+    };
+    let gpu = gpu_timeline.as_ref().and_then(derive_gpu);
+
+    let report = ResourceReport {
+        pid,
+        include_descendants: args.include_descendants,
+        sample_period_ms: args.sample_period_ms,
+        duration_secs,
+        resource,
+        gpu,
+    };
+
+    // Sample-only always emits JSON: it is meant for machine consumption
+    // by the analysis pipeline (the A/B experiment), not human reading.
+    let json = render_resource_json(&report).map_err(|e| format!("json render failed: {e}"))?;
+    println!("{json}");
     Ok(())
 }

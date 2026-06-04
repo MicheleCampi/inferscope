@@ -25,16 +25,16 @@ pub struct Args {
     ///
     /// The chat completions path is appended automatically.
     /// Example: `http://localhost:8080`.
-    #[arg(long)]
-    pub endpoint: String,
+    #[arg(long, required_unless_present = "sample_only")]
+    pub endpoint: Option<String>,
 
     /// Model identifier as the engine expects it.
-    #[arg(long)]
-    pub model: String,
+    #[arg(long, required_unless_present = "sample_only")]
+    pub model: Option<String>,
 
     /// Prompt sent as the single user message.
-    #[arg(long)]
-    pub prompt: String,
+    #[arg(long, required_unless_present = "sample_only")]
+    pub prompt: Option<String>,
 
     /// Maximum number of tokens to generate. Bounds the probe run.
     #[arg(long, default_value_t = 128)]
@@ -69,6 +69,24 @@ pub struct Args {
     /// discovery and sample). Per ADR-006.
     #[arg(long, default_value_t = false)]
     pub include_descendants: bool,
+
+    /// Sample-only mode: attach to an already-running process and
+    /// record its resource usage for a fixed duration WITHOUT
+    /// sending any inference request.
+    ///
+    /// Use this to profile a server while an external load generator
+    /// (e.g. AIPerf) drives the traffic. Requires `--pid` and
+    /// `--duration-secs`. In this mode `--endpoint`, `--model`, and
+    /// `--prompt` are not used and need not be supplied. The output
+    /// is a resource-only report (no timing section). See ADR-009.
+    #[arg(long, default_value_t = false)]
+    pub sample_only: bool,
+
+    /// Sampling duration in seconds for `--sample-only` mode.
+    ///
+    /// Required when `--sample-only` is set; ignored otherwise.
+    #[arg(long, required_if_eq("sample_only", "true"))]
+    pub duration_secs: Option<u64>,
 
     /// Sample GPU resources via NVML in parallel with the probe.
     ///
@@ -146,9 +164,10 @@ mod tests {
             "hello",
         ])
         .expect("minimal args should parse");
-        assert_eq!(args.endpoint, "http://localhost:8080");
-        assert_eq!(args.model, "llama3");
-        assert_eq!(args.prompt, "hello");
+        assert_eq!(args.endpoint.as_deref(), Some("http://localhost:8080"));
+        assert_eq!(args.model.as_deref(), Some("llama3"));
+        assert_eq!(args.prompt.as_deref(), Some("hello"));
+        assert!(!args.sample_only);
         // Defaults apply.
         assert_eq!(args.max_tokens, 128);
         assert_eq!(args.pid, None);
@@ -295,5 +314,32 @@ mod tests {
             args.otel_endpoint,
             Some("http://collector:4318".to_string())
         );
+    }
+    #[test]
+    fn sample_only_does_not_require_endpoint_model_prompt() {
+        // In sample-only mode the probe is skipped, so endpoint/model/prompt
+        // are not required. Only --pid and --duration-secs matter.
+        let args = Args::try_parse_from([
+            "inferscope",
+            "--sample-only",
+            "--pid",
+            "4242",
+            "--duration-secs",
+            "30",
+        ])
+        .expect("sample-only with pid + duration should parse without endpoint");
+        assert!(args.sample_only);
+        assert_eq!(args.pid, Some(4242));
+        assert_eq!(args.duration_secs, Some(30));
+        assert_eq!(args.endpoint, None);
+        assert_eq!(args.model, None);
+        assert_eq!(args.prompt, None);
+    }
+
+    #[test]
+    fn sample_only_requires_duration_secs() {
+        // --sample-only without --duration-secs must fail (required_if_eq).
+        let result = Args::try_parse_from(["inferscope", "--sample-only", "--pid", "4242"]);
+        assert!(result.is_err());
     }
 }
