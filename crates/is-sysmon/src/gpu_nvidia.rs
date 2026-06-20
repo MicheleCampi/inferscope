@@ -15,7 +15,7 @@
 
 use std::time::Instant;
 
-use is_core::{GpuSample, GpuTimeline};
+use is_core::{DeviceEnergy, EnergySource, GpuSample, GpuTimeline};
 use nvml_wrapper::enum_wrappers::device::TemperatureSensor;
 use nvml_wrapper::{Device, Nvml};
 use tokio::sync::oneshot;
@@ -74,6 +74,31 @@ impl GpuSampler {
     /// Returns the number of GPUs visible to the sampler.
     pub fn device_count(&self) -> usize {
         self.device_indices.len()
+    }
+
+    /// Reads the cumulative energy counter of every device once.
+    ///
+    /// Returns one `(device_index, millijoules)` pair per device whose
+    /// `nvmlDeviceGetTotalEnergyConsumption` call succeeds. Per ADR-010
+    /// the counter is the primary energy source; it is supported on
+    /// Volta and newer. A device that returns `NOT_SUPPORTED`
+    /// (pre-Volta) or any other error is omitted — the caller treats a
+    /// device absent from both the start and end snapshot as having no
+    /// counter energy, and the report falls back to the integrated
+    /// estimate for it.
+    ///
+    /// This is a point-in-time read of a monotonic counter, not a
+    /// `GpuSample`: window energy is the delta between two such reads.
+    pub fn read_energy_counters(&self) -> Vec<(u32, u64)> {
+        let mut out = Vec::with_capacity(self.device_indices.len());
+        for &index in &self.device_indices {
+            if let Ok(device) = self.nvml.device_by_index(index) {
+                if let Ok(mj) = device.total_energy_consumption() {
+                    out.push((index, mj));
+                }
+            }
+        }
+        out
     }
 
     /// Samples every GPU once and returns one `GpuSample` per
@@ -149,6 +174,10 @@ pub async fn sample_gpu_during(
 ) -> GpuTimeline {
     let mut timeline = GpuTimeline::new(config.sample_period.as_nanos() as u64);
 
+    // ADR-010: read the energy counter at window open; the delta
+    // against the close reading is the window energy per device.
+    let energy_start = sampler.read_energy_counters();
+
     let mut ticker = interval(config.sample_period);
     ticker.set_missed_tick_behavior(MissedTickBehavior::Skip);
 
@@ -167,7 +196,45 @@ pub async fn sample_gpu_during(
         }
     }
 
+    // ADR-010: close the energy window and join against the open
+    // snapshot. See compute_energy_delta for the join semantics.
+    let energy_end = sampler.read_energy_counters();
+    timeline.energy = compute_energy_delta(energy_start, energy_end);
+
     timeline
+}
+
+/// Computes per-device window energy from two counter snapshots.
+///
+/// Joins `start` and `end` on the device indices present in *both*
+/// (a device whose counter read failed in either snapshot is omitted —
+/// it has no trustworthy delta). The per-device value is
+/// `end - start` via `saturating_sub`, which guards a driver reload
+/// mid-window: the monotonic counter would reset, making `end < start`,
+/// and saturating to 0 is a truthful "no valid measurement" rather than
+/// a u64 wrap to a huge bogus figure.
+///
+/// Returns `None` when no device yields a delta, so the caller leaves
+/// `GpuTimeline::energy` absent and the report falls back to the
+/// integrated estimate (ADR-010). Pure: no NVML, testable without a GPU.
+fn compute_energy_delta(start: Vec<(u32, u64)>, end: Vec<(u32, u64)>) -> Option<Vec<DeviceEnergy>> {
+    let start_by_index: std::collections::HashMap<u32, u64> = start.into_iter().collect();
+    let mut energy: Vec<DeviceEnergy> = end
+        .into_iter()
+        .filter_map(|(index, end_mj)| {
+            start_by_index.get(&index).map(|&start_mj| DeviceEnergy {
+                device_index: index,
+                energy_millijoules: end_mj.saturating_sub(start_mj),
+                source: EnergySource::Counter,
+            })
+        })
+        .collect();
+    energy.sort_by_key(|e| e.device_index);
+    if energy.is_empty() {
+        None
+    } else {
+        Some(energy)
+    }
 }
 
 #[cfg(test)]
@@ -204,5 +271,47 @@ mod tests {
                 let _ = sampler.device_count();
             }
         }
+    }
+
+    #[test]
+    fn energy_delta_subtracts_per_device_and_sorts() {
+        let start = vec![(1, 1_000), (0, 5_000)];
+        let end = vec![(0, 56_000), (1, 8_000)];
+        let got = compute_energy_delta(start, end).expect("some energy");
+        assert_eq!(got.len(), 2);
+        // Sorted by device_index.
+        assert_eq!(got[0].device_index, 0);
+        assert_eq!(got[0].energy_millijoules, 51_000);
+        assert_eq!(got[0].source, EnergySource::Counter);
+        assert_eq!(got[1].device_index, 1);
+        assert_eq!(got[1].energy_millijoules, 7_000);
+    }
+
+    #[test]
+    fn energy_delta_saturates_on_counter_reset() {
+        // Driver reload mid-window: end < start. Must yield 0, not wrap.
+        let start = vec![(0, 90_000)];
+        let end = vec![(0, 10_000)];
+        let got = compute_energy_delta(start, end).expect("some energy");
+        assert_eq!(got[0].energy_millijoules, 0);
+    }
+
+    #[test]
+    fn energy_delta_joins_only_indices_in_both_snapshots() {
+        // Device 0 in both; device 1 only at start; device 2 only at end.
+        let start = vec![(0, 1_000), (1, 2_000)];
+        let end = vec![(0, 4_000), (2, 9_000)];
+        let got = compute_energy_delta(start, end).expect("some energy");
+        assert_eq!(got.len(), 1);
+        assert_eq!(got[0].device_index, 0);
+        assert_eq!(got[0].energy_millijoules, 3_000);
+    }
+
+    #[test]
+    fn energy_delta_empty_when_no_common_device() {
+        // No index appears in both snapshots -> None -> report falls
+        // back to the integrated estimate.
+        assert_eq!(compute_energy_delta(vec![], vec![]), None);
+        assert_eq!(compute_energy_delta(vec![(0, 1)], vec![(1, 2)]), None);
     }
 }

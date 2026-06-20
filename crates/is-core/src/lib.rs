@@ -15,6 +15,6 @@ pub mod resource;
 pub mod timing;
 
 pub use error::CoreError;
-pub use gpu::{GpuSample, GpuTimeline};
+pub use gpu::{DeviceEnergy, EnergySource, GpuSample, GpuTimeline};
 pub use resource::{ResourceSample, ResourceTimeline};
 pub use timing::{RequestTiming, TokenArrival};

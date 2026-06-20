@@ -14,6 +14,42 @@
 
 use serde::{Deserialize, Serialize};
 
+/// Where an energy figure came from.
+///
+/// Per ADR-010, the NVML hardware counter
+/// (`nvmlDeviceGetTotalEnergyConsumption`) is the primary source and is
+/// preferred when available. When the counter is unavailable (pre-Volta
+/// hardware, or `NVML_ERROR_NOT_SUPPORTED`), energy is estimated by
+/// trapezoidal integration of the power samples, which is explicitly
+/// second-best. The source is recorded so a consumer never confuses an
+/// integrated estimate with a counter reading.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum EnergySource {
+    /// Delta of the NVML hardware energy counter over the window.
+    Counter,
+    /// Trapezoidal integral of the power samples (fallback).
+    IntegratedFallback,
+}
+
+/// Energy consumed by one GPU device over the measurement window.
+///
+/// This is a window-level quantity, not a per-tick sample: it is the
+/// delta of the device's cumulative energy between the start and end of
+/// the run (see ADR-010). Stored in integer millijoules, consistent with
+/// the milliwatt power unit of [`GpuSample`].
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub struct DeviceEnergy {
+    /// GPU index on the host, 0-based; matches [`GpuSample::device_index`].
+    pub device_index: u32,
+
+    /// Energy consumed over the window, in millijoules.
+    pub energy_millijoules: u64,
+
+    /// How this figure was obtained (counter or integrated fallback).
+    pub source: EnergySource,
+}
+
 /// A single sample of one GPU device's resource state at one
 /// moment in time.
 ///
@@ -80,6 +116,15 @@ pub struct GpuTimeline {
     /// The nominal sampling period the GPU sampler was configured
     /// with, in nanoseconds.
     pub sample_period_ns: u64,
+
+    /// Per-device energy over the measurement window (see ADR-010).
+    ///
+    /// `None` when no energy was measured — a run with the GPU sampler
+    /// disabled, or a build without the `gpu-nvidia` feature. Older
+    /// reports written before ADR-010 deserialize with this absent, so
+    /// the field is backward-compatible in both directions.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub energy: Option<Vec<DeviceEnergy>>,
 }
 
 impl GpuTimeline {
@@ -88,6 +133,7 @@ impl GpuTimeline {
         Self {
             samples: Vec::new(),
             sample_period_ns,
+            energy: None,
         }
     }
 
@@ -216,5 +262,55 @@ mod tests {
         let json = serde_json::to_string(&original).expect("serialize");
         let restored: GpuTimeline = serde_json::from_str(&json).expect("deserialize");
         assert_eq!(original, restored);
+    }
+
+    #[test]
+    fn device_energy_source_serialises_snake_case() {
+        let counter = serde_json::to_string(&EnergySource::Counter).expect("serialize");
+        let fallback =
+            serde_json::to_string(&EnergySource::IntegratedFallback).expect("serialize");
+        assert_eq!(counter, "\"counter\"");
+        assert_eq!(fallback, "\"integrated_fallback\"");
+    }
+
+    #[test]
+    fn timeline_with_energy_survives_json_round_trip() {
+        let mut original = GpuTimeline::new(500_000_000);
+        original.push(sample(500_000_000, 0, 1_000_000_000));
+        original.push(sample(1_000_000_000, 0, 1_000_000_000));
+        original.energy = Some(vec![
+            DeviceEnergy {
+                device_index: 0,
+                energy_millijoules: 51_500,
+                source: EnergySource::Counter,
+            },
+            DeviceEnergy {
+                device_index: 1,
+                energy_millijoules: 56_000,
+                source: EnergySource::IntegratedFallback,
+            },
+        ]);
+
+        let json = serde_json::to_string(&original).expect("serialize");
+        let restored: GpuTimeline = serde_json::from_str(&json).expect("deserialize");
+        assert_eq!(original, restored);
+    }
+
+    #[test]
+    fn pre_adr010_timeline_without_energy_field_deserialises_to_none() {
+        // A GpuTimeline JSON written before ADR-010 has no `energy` key.
+        // It must deserialise with energy = None, not error.
+        let legacy = r#"{"samples":[],"sample_period_ns":500000000}"#;
+        let restored: GpuTimeline = serde_json::from_str(legacy).expect("deserialize legacy");
+        assert_eq!(restored.energy, None);
+        assert_eq!(restored.sample_period_ns, 500_000_000);
+    }
+
+    #[test]
+    fn timeline_without_energy_omits_field_in_json() {
+        // skip_serializing_if: a None energy must not appear in output.
+        let t = GpuTimeline::new(500_000_000);
+        let json = serde_json::to_string(&t).expect("serialize");
+        assert!(!json.contains("energy"), "energy must be omitted when None: {json}");
     }
 }
