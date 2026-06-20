@@ -21,6 +21,8 @@ left intact as a historical record.
 | [ADR-006](006-process-tree-aggregation.md) | Process Tree Aggregation for Sysmon | Accepted |
 | [ADR-007](007-per-device-gpu-metrics.md) | Per-Device GPU Metrics in the Report Schema | Accepted |
 | [ADR-008](008-opentelemetry-export.md) | OpenTelemetry Export of Inferscope Reports | Accepted |
+| [ADR-009](009-sample-only-mode.md) | Sample-Only Mode | Accepted |
+| [ADR-010](010-energy-and-efficiency-metrics.md) | Energy Consumption and Efficiency Metrics | Accepted |
 
 ## Format
 
