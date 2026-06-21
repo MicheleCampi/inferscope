@@ -29,9 +29,11 @@ pub mod resource_report;
 #[cfg(feature = "otel-export")]
 pub mod otel;
 
-pub use derive::{derive_gpu, derive_resource, derive_timing};
+pub use derive::{derive_efficiency, derive_gpu, derive_resource, derive_timing};
 pub use error::ReportError;
-pub use metrics::{GpuMetrics, LatencyDistribution, Report, ResourceMetrics, TimingMetrics};
+pub use metrics::{
+    EfficiencyMetrics, GpuMetrics, LatencyDistribution, Report, ResourceMetrics, TimingMetrics,
+};
 pub use render::{render_json, render_text};
 pub use resource_report::{render_resource_json, ResourceReport};
 

@@ -202,6 +202,32 @@ pub fn export_to_otel(report: &Report, endpoint: &str) -> Result<(), OtelExportE
         ));
     }
 
+    // Energy-efficiency attributes (ADR-010). Exported as floats;
+    // tokens_per_watt is omitted because it is identically equal to
+    // tokens_per_joule (tokens / (W*s) = tokens / J), so emitting it
+    // would invite double-counting in dashboards.
+    if let Some(eff) = &report.efficiency {
+        span.set_attribute(KeyValue::new(
+            "inferscope.efficiency.energy_joules",
+            eff.energy_joules,
+        ));
+        span.set_attribute(KeyValue::new(
+            "inferscope.efficiency.energy_per_token_mj",
+            eff.energy_per_token_mj,
+        ));
+        span.set_attribute(KeyValue::new(
+            "inferscope.efficiency.tokens_per_joule",
+            eff.tokens_per_joule,
+        ));
+        span.set_attribute(KeyValue::new(
+            "inferscope.efficiency.energy_source",
+            match eff.energy_source {
+                is_core::EnergySource::Counter => "counter",
+                is_core::EnergySource::IntegratedFallback => "integrated_fallback",
+            },
+        ));
+    }
+
     // One event per token arrival, timestamped at run_start + elapsed.
     for token in &report.request_timing.tokens {
         let token_time = run_start
@@ -286,6 +312,7 @@ mod tests {
             },
             resource: None,
             gpu: None,
+            efficiency: None,
         }
     }
 

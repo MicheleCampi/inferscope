@@ -46,6 +46,10 @@ pub fn render_text(report: &Report) -> String {
             render_per_device_gpu_usage(&mut out, gpu);
         }
     }
+    if let Some(eff) = &report.efficiency {
+        out.push('\n');
+        render_efficiency(&mut out, eff);
+    }
 
     out
 }
@@ -181,6 +185,32 @@ fn render_gpu_usage(out: &mut String, gpu: &crate::metrics::GpuMetrics) {
     );
 }
 
+/// Renders the energy-efficiency section (ADR-010).
+///
+/// `tokens_per_watt` is reported for dimensional familiarity but is
+/// identically equal to `tokens_per_joule`: tokens / (W * s) =
+/// tokens / J, since a watt is a joule per second. The line is kept
+/// so dashboards expecting a per-watt figure find one, with the
+/// identity called out so no one reads it as independent evidence.
+fn render_efficiency(out: &mut String, eff: &crate::metrics::EfficiencyMetrics) {
+    let source = match eff.energy_source {
+        is_core::EnergySource::Counter => "counter",
+        is_core::EnergySource::IntegratedFallback => "integrated (fallback)",
+    };
+    let _ = writeln!(out, "Energy efficiency (source: {source}):");
+    let _ = writeln!(out, "  Energy total       {:.3} J", eff.energy_joules);
+    let _ = writeln!(
+        out,
+        "  Energy per token   {:.3} mJ",
+        eff.energy_per_token_mj
+    );
+    let _ = writeln!(
+        out,
+        "  Tokens per joule   {:.2} tok/J  (= tok/(W*s), identical)",
+        eff.tokens_per_joule
+    );
+}
+
 /// Renders one line per GPU device showing the headline metrics
 /// for that device only. Invoked after `render_gpu_usage` when
 /// `device_count > 1`, to surface per-device asymmetry that the
@@ -281,6 +311,7 @@ mod tests {
                 thread_max: 8,
             }),
             gpu: None,
+            efficiency: None,
         }
     }
 
@@ -293,6 +324,25 @@ mod tests {
         assert!(text.contains("Probe summary"));
         assert!(text.contains("Inter-token latency"));
         assert!(text.contains("Process resource usage"));
+    }
+
+    #[test]
+    fn text_render_includes_efficiency_section_with_identity_note() {
+        let mut r = sample_report();
+        r.efficiency = Some(crate::metrics::EfficiencyMetrics {
+            energy_joules: 51.5,
+            energy_per_token_mj: 17_166.7,
+            tokens_per_joule: 0.058,
+            tokens_per_watt: 0.058,
+            energy_source: is_core::EnergySource::Counter,
+        });
+        let text = render_text(&r);
+        assert!(text.contains("Energy efficiency"));
+        assert!(text.contains("source: counter"));
+        assert!(text.contains("Tokens per joule"));
+        // The identity note must be present so the per-watt figure
+        // is never read as independent evidence.
+        assert!(text.contains("identical"));
     }
 
     #[test]
@@ -327,6 +377,7 @@ mod tests {
             },
             resource: None,
             gpu: None,
+            efficiency: None,
         };
         let text = render_text(&r);
         assert!(text.contains("Tokens generated      0"));

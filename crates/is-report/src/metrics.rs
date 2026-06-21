@@ -225,6 +225,10 @@ pub struct Report {
     pub resource: Option<ResourceMetrics>,
     /// Derived GPU metrics, if a GPU timeline was available.
     pub gpu: Option<GpuMetrics>,
+    /// Derived energy-efficiency metrics, if both an energy figure
+    /// and a positive token count were available (ADR-010). `None`
+    /// when energy could not be measured or no tokens were produced.
+    pub efficiency: Option<EfficiencyMetrics>,
 }
 
 #[cfg(test)]
@@ -277,6 +281,7 @@ mod tests {
                 thread_max: 8,
             }),
             gpu: None,
+            efficiency: None,
         }
     }
 
@@ -313,6 +318,7 @@ mod tests {
             },
             resource: None,
             gpu: None,
+            efficiency: None,
         };
 
         let json = serde_json::to_string(&original).expect("serialize");
@@ -321,5 +327,23 @@ mod tests {
         assert!(restored.resource_timeline.is_none());
         assert!(restored.resource.is_none());
         assert_eq!(restored.timing.token_count, 0);
+    }
+
+    #[test]
+    fn report_with_efficiency_round_trips() {
+        let mut original = sample_report();
+        original.efficiency = Some(EfficiencyMetrics {
+            energy_joules: 51.5,
+            energy_per_token_mj: 17_166.7,
+            tokens_per_joule: 0.058,
+            tokens_per_watt: 0.058,
+            energy_source: EnergySource::Counter,
+        });
+        let json = serde_json::to_string(&original).expect("serialize");
+        let restored: Report = serde_json::from_str(&json).expect("deserialize");
+        let eff = restored.efficiency.expect("efficiency survives round-trip");
+        assert_eq!(eff.energy_joules, 51.5);
+        assert_eq!(eff.tokens_per_joule, eff.tokens_per_watt);
+        assert_eq!(eff.energy_source, EnergySource::Counter);
     }
 }

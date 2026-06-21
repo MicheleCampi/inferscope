@@ -16,8 +16,8 @@ use tokio::sync::oneshot;
 
 use is_probe::{config::ProbeConfig, runner::run as run_probe};
 use is_report::{
-    derive_gpu, derive_resource, derive_timing, render_json, render_resource_json, render_text,
-    Report, ResourceReport,
+    derive_efficiency, derive_gpu, derive_resource, derive_timing, render_json,
+    render_resource_json, render_text, Report, ResourceReport,
 };
 use is_sysmon::{config::SysmonConfig, sampler::sample_during};
 
@@ -223,6 +223,13 @@ async fn orchestrate(args: Args) -> Result<(), String> {
 
     let gpu = gpu_timeline.as_ref().and_then(derive_gpu);
 
+    // Efficiency derives from the aggregate energy figure on the
+    // GPU metrics and the token count (ADR-010). `None` propagates
+    // when energy was unmeasurable or no tokens were produced.
+    let efficiency = gpu
+        .as_ref()
+        .and_then(|g| derive_efficiency(g.energy_millijoules, g.energy_source, timing.token_count));
+
     let report = Report {
         request_timing,
         resource_timeline,
@@ -230,6 +237,7 @@ async fn orchestrate(args: Args) -> Result<(), String> {
         timing,
         resource,
         gpu,
+        efficiency,
     };
 
     if args.json {
