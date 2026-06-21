@@ -19,15 +19,21 @@ llama.cpp's server, mistral.rs, vLLM, Ollama, TGI — is a target.
 
 ## Status
 
-**v0.1.0 released (May 2026).** The CPU-side profiling foundation
-is stable: token timing capture, `/proc`-based process resource
-sampling, derived metrics, and text/JSON reporting.
+**v0.3.0 released.** The profiling stack is stable across CPU and
+NVIDIA GPU. GPU support is NVIDIA-only today; all GPU and energy
+features are gated behind the `gpu-nvidia` feature flag.
 
-**v0.2 in active development** on the
-[`gpu/v0.2`](https://github.com/MicheleCampi/inferscope/tree/gpu/v0.2)
-branch, adding NVIDIA GPU resource sampling via NVML behind a
-`gpu-nvidia` feature flag. AMD support via the newer `amd-smi`
-tool is planned for v0.3, once that tool reaches a stable release.
+- **CPU foundation** (v0.1): token timing capture, `/proc`-based
+  process resource sampling, derived metrics, text/JSON reporting.
+- **NVIDIA GPU sampling** (v0.2): per-device utilization, memory,
+  and power via NVML.
+- **Energy & efficiency** (v0.3): total energy from the NVML
+  hardware energy counter, with derived tokens-per-joule and
+  tokens-per-watt. Validated end-to-end against a real llama.cpp
+  workload on an NVIDIA A10 — see
+  [`validation-results/`](validation-results/) for the captured
+  evidence.
+
 ## What it measures
 
 For each request sent to an engine, inferscope captures:
@@ -41,6 +47,15 @@ For each request sent to an engine, inferscope captures:
 - **Process resource footprint** — resident memory, CPU
   utilization, and thread count of the engine process, sampled
   over the lifetime of the request.
+
+- **GPU resource footprint** *(with `gpu-nvidia`)* — per-device
+  utilization, memory, and power draw, sampled via NVML over the
+  request lifetime.
+- **Energy and efficiency** *(with `gpu-nvidia`)* — total energy
+  consumed, read from the NVML hardware energy counter
+  (`nvmlDeviceGetTotalEnergyConsumption`) with a trapezoidal
+  power-integration fallback, plus derived tokens-per-joule and
+  tokens-per-watt.
 
 The output is a structured report (text and JSON) that aggregates
 these across a run.
