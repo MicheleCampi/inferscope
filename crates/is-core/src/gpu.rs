@@ -267,8 +267,7 @@ mod tests {
     #[test]
     fn device_energy_source_serialises_snake_case() {
         let counter = serde_json::to_string(&EnergySource::Counter).expect("serialize");
-        let fallback =
-            serde_json::to_string(&EnergySource::IntegratedFallback).expect("serialize");
+        let fallback = serde_json::to_string(&EnergySource::IntegratedFallback).expect("serialize");
         assert_eq!(counter, "\"counter\"");
         assert_eq!(fallback, "\"integrated_fallback\"");
     }
@@ -311,6 +310,9 @@ mod tests {
         // skip_serializing_if: a None energy must not appear in output.
         let t = GpuTimeline::new(500_000_000);
         let json = serde_json::to_string(&t).expect("serialize");
-        assert!(!json.contains("energy"), "energy must be omitted when None: {json}");
+        assert!(
+            !json.contains("energy"),
+            "energy must be omitted when None: {json}"
+        );
     }
 }
