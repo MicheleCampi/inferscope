@@ -163,6 +163,65 @@ fn percentile_nearest_rank(sorted: &[u64], percentile: u32) -> u64 {
     sorted[idx]
 }
 
+/// Derives energy-efficiency metrics from aggregate GPU energy and the
+/// output token count (ADR-010).
+///
+/// Returns `None` when there is nothing to divide: no energy was
+/// measured, the energy is zero, or no tokens were produced. A single
+/// founding calculation drives the family — tokens per joule — and
+/// `tokens_per_watt` is returned as the same value, since with time in
+/// seconds tokens/(W*s) = tokens/J. Exposing both as one number rather
+/// than two independent computes keeps them coherent by construction.
+pub fn derive_efficiency(
+    energy_millijoules: Option<u64>,
+    energy_source: Option<is_core::EnergySource>,
+    token_count: u32,
+) -> Option<crate::metrics::EfficiencyMetrics> {
+    let mj = energy_millijoules?;
+    let source = energy_source?;
+    if mj == 0 || token_count == 0 {
+        return None;
+    }
+    let tokens = token_count as f64;
+    let energy_joules = mj as f64 / 1000.0;
+    let tokens_per_joule = tokens / energy_joules;
+    Some(crate::metrics::EfficiencyMetrics {
+        energy_joules,
+        energy_per_token_mj: mj as f64 / tokens,
+        tokens_per_joule,
+        // Identity: tokens/(W*s) = tokens/J (time in seconds).
+        tokens_per_watt: tokens_per_joule,
+        energy_source: source,
+    })
+}
+
+/// Trapezoidal integral of a device's power samples over time,
+/// returning energy in millijoules.
+///
+/// This is the ADR-010 fallback used when the NVML energy counter is
+/// unavailable for a device. The samples must be for a single device
+/// and ordered by `elapsed_ns` (the GPU sampler emits them that way).
+///
+/// Method: energy = sum over adjacent sample pairs of the trapezoid
+/// area 0.5 * (P_i + P_{i+1}) * dt. Power is in milliwatts and time in
+/// nanoseconds, so each term is mW * ns = 1e-12 J = 1e-9 mJ; the running
+/// sum is divided by 1e9 to land in millijoules. Fewer than two samples
+/// gives no interval to integrate and returns 0.
+fn integrate_power_trapezoidal(samples: &[&is_core::GpuSample]) -> u64 {
+    if samples.len() < 2 {
+        return 0;
+    }
+    let mut area_mw_ns: f64 = 0.0;
+    for pair in samples.windows(2) {
+        let (a, b) = (pair[0], pair[1]);
+        let dt_ns = b.elapsed_ns.saturating_sub(a.elapsed_ns) as f64;
+        let mean_power_mw = (a.power_draw_milliwatts as f64 + b.power_draw_milliwatts as f64) / 2.0;
+        area_mw_ns += mean_power_mw * dt_ns;
+    }
+    // mW * ns -> mJ: divide by 1e9.
+    (area_mw_ns / 1.0e9) as u64
+}
+
 /// Computes derived GPU metrics from a [`GpuTimeline`].
 ///
 /// Returns `Ok(None)` if the timeline is empty. Aggregations span
@@ -275,6 +334,25 @@ pub fn derive_gpu(timeline: &is_core::GpuTimeline) -> Option<crate::metrics::Gpu
                 .sum();
             let dev_power_mean = (dev_power_sum / dev_samples.len() as u64) as u32;
 
+            // ADR-010 energy: prefer the NVML counter for this device;
+            // fall back to the trapezoidal power integral otherwise.
+            let counter_mj = timeline.energy.as_ref().and_then(|es| {
+                es.iter()
+                    .find(|e| e.device_index == d && e.source == is_core::EnergySource::Counter)
+                    .map(|e| e.energy_millijoules)
+            });
+            let (dev_energy_mj, dev_energy_source) = match counter_mj {
+                Some(mj) => (Some(mj), Some(is_core::EnergySource::Counter)),
+                None => {
+                    let integ = integrate_power_trapezoidal(&dev_samples);
+                    if integ > 0 {
+                        (Some(integ), Some(is_core::EnergySource::IntegratedFallback))
+                    } else {
+                        (None, None)
+                    }
+                }
+            };
+
             crate::metrics::GpuDeviceMetrics {
                 device_index: d,
                 sample_count: dev_sample_count,
@@ -288,10 +366,39 @@ pub fn derive_gpu(timeline: &is_core::GpuTimeline) -> Option<crate::metrics::Gpu
                 temperature_max_celsius: dev_temp_max,
                 power_max_milliwatts: dev_power_max,
                 power_mean_milliwatts: dev_power_mean,
+                energy_millijoules: dev_energy_mj,
+                energy_source: dev_energy_source,
             }
         })
         .collect();
     per_device.sort_by_key(|d| d.device_index);
+
+    // ADR-010 aggregate energy: sum of per-device energies. The source
+    // is Counter only if every contributing device used the counter;
+    // if any device fell back to the integral, the aggregate is marked
+    // IntegratedFallback (the weakest link governs, so the aggregate is
+    // never presented as counter-grade when it is partly estimated).
+    let contributing: Vec<&crate::metrics::GpuDeviceMetrics> = per_device
+        .iter()
+        .filter(|d| d.energy_millijoules.is_some())
+        .collect();
+    let (energy_millijoules, energy_source) = if contributing.is_empty() {
+        (None, None)
+    } else {
+        let total: u64 = contributing
+            .iter()
+            .map(|d| d.energy_millijoules.unwrap())
+            .sum();
+        let all_counter = contributing
+            .iter()
+            .all(|d| d.energy_source == Some(is_core::EnergySource::Counter));
+        let source = if all_counter {
+            is_core::EnergySource::Counter
+        } else {
+            is_core::EnergySource::IntegratedFallback
+        };
+        (Some(total), Some(source))
+    };
 
     Some(crate::metrics::GpuMetrics {
         sample_count,
@@ -306,6 +413,8 @@ pub fn derive_gpu(timeline: &is_core::GpuTimeline) -> Option<crate::metrics::Gpu
         temperature_max_celsius,
         power_max_milliwatts,
         power_mean_milliwatts,
+        energy_millijoules,
+        energy_source,
         per_device,
     })
 }
@@ -606,5 +715,169 @@ mod tests {
         assert_eq!(m.per_device[3].memory_used_max_bytes, 0);
         assert_eq!(m.per_device[3].utilization_mean_percent, 0);
         assert_eq!(m.per_device[3].power_mean_milliwatts, 32_000);
+    }
+
+    // ----- integrate_power_trapezoidal -----
+    #[test]
+    fn integral_constant_power_equals_power_times_time() {
+        // 100 W (=100_000 mW) held for 2 s (=2e9 ns) -> 200 J = 200_000 mJ.
+        // Trapezoidal rule is exact for a constant function regardless
+        // of how many intermediate samples we place.
+        let owned = [
+            gpu_sample(0, 0, 0, 0, 0, 100_000),
+            gpu_sample(500_000_000, 0, 0, 0, 0, 100_000),
+            gpu_sample(1_000_000_000, 0, 0, 0, 0, 100_000),
+            gpu_sample(2_000_000_000, 0, 0, 0, 0, 100_000),
+        ];
+        let refs: Vec<&is_core::GpuSample> = owned.iter().collect();
+        assert_eq!(integrate_power_trapezoidal(&refs), 200_000);
+    }
+
+    #[test]
+    fn integral_linear_ramp_equals_mean_power_times_time() {
+        // Linear ramp 0 -> 200_000 mW over 2 s. Mean power 100_000 mW,
+        // so energy = 100 W * 2 s = 200_000 mJ. Trapezoid is exact on
+        // a linear function.
+        let owned = [
+            gpu_sample(0, 0, 0, 0, 0, 0),
+            gpu_sample(1_000_000_000, 0, 0, 0, 0, 100_000),
+            gpu_sample(2_000_000_000, 0, 0, 0, 0, 200_000),
+        ];
+        let refs: Vec<&is_core::GpuSample> = owned.iter().collect();
+        assert_eq!(integrate_power_trapezoidal(&refs), 200_000);
+    }
+
+    #[test]
+    fn integral_fewer_than_two_samples_is_zero() {
+        let owned = [gpu_sample(0, 0, 0, 0, 0, 100_000)];
+        let refs: Vec<&is_core::GpuSample> = owned.iter().collect();
+        assert_eq!(integrate_power_trapezoidal(&refs), 0);
+        assert_eq!(integrate_power_trapezoidal(&[]), 0);
+    }
+
+    // ----- derive_gpu energy (ADR-010) -----
+    #[test]
+    fn derive_gpu_prefers_counter_energy_when_present() {
+        // Device 0 has a counter reading; it must win over the integral.
+        let mut tl = is_core::GpuTimeline::new(1_000_000_000);
+        tl.push(gpu_sample(0, 0, 0, 0, 0, 100_000));
+        tl.push(gpu_sample(2_000_000_000, 0, 0, 0, 0, 100_000));
+        // Integral over these would be 200_000 mJ; counter says 51_500.
+        tl.energy = Some(vec![is_core::DeviceEnergy {
+            device_index: 0,
+            energy_millijoules: 51_500,
+            source: is_core::EnergySource::Counter,
+        }]);
+        let m = derive_gpu(&tl).expect("non-empty");
+        assert_eq!(m.per_device[0].energy_millijoules, Some(51_500));
+        assert_eq!(
+            m.per_device[0].energy_source,
+            Some(is_core::EnergySource::Counter)
+        );
+        // Aggregate of a single counter device is counter-grade.
+        assert_eq!(m.energy_millijoules, Some(51_500));
+        assert_eq!(m.energy_source, Some(is_core::EnergySource::Counter));
+    }
+
+    #[test]
+    fn derive_gpu_falls_back_to_integral_without_counter() {
+        // No timeline.energy -> integrate. Constant 100 W for 2 s.
+        let mut tl = is_core::GpuTimeline::new(1_000_000_000);
+        tl.push(gpu_sample(0, 0, 0, 0, 0, 100_000));
+        tl.push(gpu_sample(2_000_000_000, 0, 0, 0, 0, 100_000));
+        let m = derive_gpu(&tl).expect("non-empty");
+        assert_eq!(m.per_device[0].energy_millijoules, Some(200_000));
+        assert_eq!(
+            m.per_device[0].energy_source,
+            Some(is_core::EnergySource::IntegratedFallback)
+        );
+    }
+
+    #[test]
+    fn derive_gpu_aggregate_is_fallback_grade_if_any_device_estimated() {
+        // Device 0: counter. Device 1: no counter -> integral.
+        let mut tl = is_core::GpuTimeline::new(1_000_000_000);
+        tl.push(gpu_sample(0, 0, 0, 0, 0, 100_000));
+        tl.push(gpu_sample(2_000_000_000, 0, 0, 0, 0, 100_000));
+        tl.push(gpu_sample(0, 1, 0, 0, 0, 50_000));
+        tl.push(gpu_sample(2_000_000_000, 1, 0, 0, 0, 50_000));
+        tl.energy = Some(vec![is_core::DeviceEnergy {
+            device_index: 0,
+            energy_millijoules: 60_000,
+            source: is_core::EnergySource::Counter,
+        }]);
+        let m = derive_gpu(&tl).expect("non-empty");
+        // Device 1 integral: 50 W * 2 s = 100_000 mJ.
+        assert_eq!(m.per_device[1].energy_millijoules, Some(100_000));
+        // Aggregate = 60_000 + 100_000, marked fallback (weakest link).
+        assert_eq!(m.energy_millijoules, Some(160_000));
+        assert_eq!(
+            m.energy_source,
+            Some(is_core::EnergySource::IntegratedFallback)
+        );
+    }
+
+    #[test]
+    fn derive_gpu_aggregate_is_counter_grade_when_all_counter() {
+        let mut tl = is_core::GpuTimeline::new(1_000_000_000);
+        tl.push(gpu_sample(0, 0, 0, 0, 0, 100_000));
+        tl.push(gpu_sample(2_000_000_000, 0, 0, 0, 0, 100_000));
+        tl.push(gpu_sample(0, 1, 0, 0, 0, 100_000));
+        tl.push(gpu_sample(2_000_000_000, 1, 0, 0, 0, 100_000));
+        tl.energy = Some(vec![
+            is_core::DeviceEnergy {
+                device_index: 0,
+                energy_millijoules: 40_000,
+                source: is_core::EnergySource::Counter,
+            },
+            is_core::DeviceEnergy {
+                device_index: 1,
+                energy_millijoules: 45_000,
+                source: is_core::EnergySource::Counter,
+            },
+        ]);
+        let m = derive_gpu(&tl).expect("non-empty");
+        assert_eq!(m.energy_millijoules, Some(85_000));
+        assert_eq!(m.energy_source, Some(is_core::EnergySource::Counter));
+    }
+
+    // ----- derive_efficiency (ADR-010) -----
+    #[test]
+    fn efficiency_known_values() {
+        // 200_000 mJ = 200 J, 1000 tokens.
+        let e = derive_efficiency(Some(200_000), Some(is_core::EnergySource::Counter), 1000)
+            .expect("some efficiency");
+        assert_eq!(e.energy_joules, 200.0);
+        assert_eq!(e.energy_per_token_mj, 200.0); // 200_000 / 1000
+        assert_eq!(e.tokens_per_joule, 5.0); // 1000 / 200
+        assert_eq!(e.tokens_per_watt, 5.0); // identity
+        assert_eq!(e.energy_source, is_core::EnergySource::Counter);
+    }
+
+    #[test]
+    fn efficiency_tokens_per_watt_equals_tokens_per_joule() {
+        // Non-round values: the identity must hold exactly, because the
+        // two come from one computation, not two.
+        let e = derive_efficiency(
+            Some(73_456),
+            Some(is_core::EnergySource::IntegratedFallback),
+            337,
+        )
+        .expect("some efficiency");
+        assert_eq!(e.tokens_per_watt, e.tokens_per_joule);
+        assert_eq!(e.energy_source, is_core::EnergySource::IntegratedFallback);
+    }
+
+    #[test]
+    fn efficiency_none_without_energy() {
+        assert!(derive_efficiency(None, None, 1000).is_none());
+    }
+
+    #[test]
+    fn efficiency_none_on_zero_energy_or_zero_tokens() {
+        assert!(derive_efficiency(Some(0), Some(is_core::EnergySource::Counter), 1000).is_none());
+        assert!(
+            derive_efficiency(Some(200_000), Some(is_core::EnergySource::Counter), 0).is_none()
+        );
     }
 }

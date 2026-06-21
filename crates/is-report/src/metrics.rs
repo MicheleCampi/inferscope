@@ -12,6 +12,8 @@
 use is_core::{RequestTiming, ResourceTimeline};
 use serde::{Deserialize, Serialize};
 
+use is_core::EnergySource;
+
 /// Distribution summary for a set of inter-token latency deltas.
 ///
 /// All values are in nanoseconds. Percentiles are computed with
@@ -108,6 +110,15 @@ pub struct GpuDeviceMetrics {
     pub power_max_milliwatts: u32,
     /// Mean power draw for this device across its samples, in milliwatts.
     pub power_mean_milliwatts: u32,
+    /// Energy consumed by this device over the window, in millijoules
+    /// (ADR-010). `None` when neither the NVML counter nor a power
+    /// integral could be computed (e.g. a single sample). The unit is
+    /// integer millijoules to keep this type `Eq`; joule conversion
+    /// happens at the efficiency/render layer.
+    pub energy_millijoules: Option<u64>,
+    /// How `energy_millijoules` was obtained: the NVML counter, or the
+    /// trapezoidal power integral fallback. `None` iff energy is `None`.
+    pub energy_source: Option<EnergySource>,
 }
 
 /// GPU metrics derived from a [`GpuTimeline`].
@@ -150,11 +161,51 @@ pub struct GpuMetrics {
     pub power_max_milliwatts: u32,
     /// Mean power draw across all samples, in milliwatts.
     pub power_mean_milliwatts: u32,
+    /// Total energy over the window across all devices, in millijoules
+    /// (ADR-010): the sum of the per-device energies. `None` when no
+    /// device produced an energy figure.
+    pub energy_millijoules: Option<u64>,
+    /// The energy source for the aggregate. `Counter` if every
+    /// contributing device used the counter; `IntegratedFallback` if
+    /// any device fell back to the integral (the weakest link governs,
+    /// so a consumer never over-trusts a mixed aggregate). `None` iff
+    /// energy is `None`.
+    pub energy_source: Option<EnergySource>,
     /// Per-device breakdown of the aggregates above, one entry per
     /// `device_index`. Empty for single-device runs is impossible —
     /// the timeline always has at least one device, but consumers
     /// should treat absence as equivalent to a single-element vector.
     pub per_device: Vec<GpuDeviceMetrics>,
+}
+
+/// Energy-efficiency metrics derived from GPU energy and token count
+/// (ADR-010).
+///
+/// All fields are `f64`, so this type is `PartialEq` but not `Eq`.
+///
+/// `tokens_per_watt` and `tokens_per_joule` are the *same physical
+/// quantity* expressed two ways: tokens/(W*s) = tokens/J, so with time
+/// in seconds the two are numerically identical. inferscope exposes both
+/// because "tokens per watt" is the market's term while "tokens per
+/// joule" makes the energy basis explicit, but they are not independent
+/// signals -- both come from one calculation (token_count / energy).
+///
+/// `energy_source` is carried through from the GPU metrics so a consumer
+/// knows whether this efficiency rests on the NVML counter or on the
+/// integrated-power fallback.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct EfficiencyMetrics {
+    /// Total GPU energy over the window, in joules.
+    pub energy_joules: f64,
+    /// Energy cost per output token, in millijoules.
+    pub energy_per_token_mj: f64,
+    /// Output tokens produced per joule of GPU energy.
+    pub tokens_per_joule: f64,
+    /// Output tokens per watt. Numerically equal to `tokens_per_joule`.
+    pub tokens_per_watt: f64,
+    /// Whether the underlying energy came from the NVML counter or the
+    /// integrated-power fallback.
+    pub energy_source: EnergySource,
 }
 
 /// The full report for one probe run: raw signals plus derived
