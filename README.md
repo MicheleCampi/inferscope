@@ -4,7 +4,7 @@
 
 [![CI](https://github.com/MicheleCampi/inferscope/actions/workflows/ci.yml/badge.svg)](https://github.com/MicheleCampi/inferscope/actions/workflows/ci.yml)
 [![License: Apache-2.0](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
-[![Rust 1.83+](https://img.shields.io/badge/rust-1.83%2B-orange.svg)](rust-toolchain.toml)
+[![Rust 1.85+](https://img.shields.io/badge/rust-1.85%2B-orange.svg)](rust-toolchain.toml)
 [![Status: alpha](https://img.shields.io/badge/status-alpha-red.svg)](#status)
 
 inferscope measures what an LLM inference engine actually does when
@@ -182,7 +182,7 @@ sysmon scope, report metrics and output format — is recorded in
 
 ## Building
 
-inferscope pins a minimum supported Rust version of 1.83 via
+inferscope pins a minimum supported Rust version of 1.85 via
 `rust-toolchain.toml`. With a Rust toolchain installed:
 
     git clone https://github.com/MicheleCampi/inferscope.git
