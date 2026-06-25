@@ -11,10 +11,12 @@
 
 pub mod error;
 pub mod gpu;
+pub mod kvcache;
 pub mod resource;
 pub mod timing;
 
 pub use error::CoreError;
 pub use gpu::{DeviceEnergy, EnergySource, GpuSample, GpuTimeline};
+pub use kvcache::{KvCacheSample, KvCacheTimeline};
 pub use resource::{ResourceSample, ResourceTimeline};
 pub use timing::{RequestTiming, TokenArrival};
