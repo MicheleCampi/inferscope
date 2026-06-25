@@ -23,6 +23,7 @@ left intact as a historical record.
 | [ADR-008](008-opentelemetry-export.md) | OpenTelemetry Export of Inferscope Reports | Accepted |
 | [ADR-009](009-sample-only-mode.md) | Sample-Only Mode | Accepted |
 | [ADR-010](010-energy-and-efficiency-metrics.md) | Energy Consumption and Efficiency Metrics | Accepted |
+| [ADR-011](011-prometheus-vllm-metric-source.md) | Prometheus vLLM Metric Source for KV-Cache Hit Rate | Accepted |
 
 ## Format
 
