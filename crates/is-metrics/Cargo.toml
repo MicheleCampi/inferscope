@@ -1,0 +1,20 @@
+[package]
+name = "is-metrics"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+description = "Prometheus metric source for inferscope: scrapes a vLLM-schema /metrics endpoint and captures KV-cache hit-rate counters"
+
+[dependencies]
+is-core = { path = "../is-core" }
+serde.workspace = true
+thiserror.workspace = true
+tokio.workspace = true
+reqwest.workspace = true
+
+[dev-dependencies]
+wiremock = "=0.6.2"
+serde_json.workspace = true

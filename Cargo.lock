@@ -735,6 +735,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "is-metrics"
+version = "0.3.0"
+dependencies = [
+ "is-core",
+ "reqwest",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.18",
+ "tokio",
+ "wiremock",
+]
+
+[[package]]
 name = "is-probe"
 version = "0.3.0"
 dependencies = [

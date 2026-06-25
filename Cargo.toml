@@ -4,6 +4,7 @@ members = [
     "crates/is-core",
     "crates/is-probe",
     "crates/is-sysmon",
+    "crates/is-metrics",
     "crates/is-report",
     "crates/inferscope",
 ]
