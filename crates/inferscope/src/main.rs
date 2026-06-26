@@ -14,9 +14,10 @@ use std::time::{Duration, Instant};
 use clap::Parser;
 use tokio::sync::oneshot;
 
+use is_metrics::{scrape_during, MetricsConfig};
 use is_probe::{config::ProbeConfig, runner::run as run_probe};
 use is_report::{
-    derive_efficiency, derive_gpu, derive_resource, derive_timing, render_json,
+    derive_efficiency, derive_gpu, derive_kvcache, derive_resource, derive_timing, render_json,
     render_resource_json, render_text, Report, ResourceReport,
 };
 use is_sysmon::{config::SysmonConfig, sampler::sample_during};
@@ -140,6 +141,21 @@ async fn orchestrate(args: Args) -> Result<(), String> {
         None
     };
 
+    // Spawn the metrics scrape task if --metrics-endpoint was supplied
+    // (ADR-011). Unlike the GPU sampler this is not feature-gated: the
+    // crate is always compiled and activates on the flag. The scrape
+    // shares `start` with the other samplers so its samples sit on the
+    // same elapsed_ns clock (ADR-003). The --model value selects the
+    // model_name label series.
+    let metrics_handle = match (args.metrics_endpoint.as_deref(), args.model.as_deref()) {
+        (Some(endpoint), Some(model)) => {
+            let cfg = MetricsConfig::with_period(endpoint, model, args.metrics_period());
+            let (cancel_tx, cancel_rx) = oneshot::channel();
+            let task = tokio::spawn(scrape_during(cfg, start, cancel_rx));
+            Some((task, cancel_tx))
+        }
+        _ => None,
+    };
     // Run the probe to completion. The probe owns the wall clock
     // of the profiling run; sysmon and GPU sampler are along for
     // the ride.
@@ -187,6 +203,21 @@ async fn orchestrate(args: Args) -> Result<(), String> {
     // Surface the probe error only after both samplers have been
     // cleaned up. Doing it earlier would leak the sampling tasks.
     let request_timing = probe_result?;
+    // Stop the metrics scrape (if running) and collect its timeline,
+    // same shape as the other samplers. A panicked task is non-fatal:
+    // warn and report whatever the probe captured (ADR-011).
+    let kvcache_timeline = if let Some((task, cancel_tx)) = metrics_handle {
+        let _ = cancel_tx.send(());
+        match task.await {
+            Ok(timeline) => Some(timeline),
+            Err(e) => {
+                eprintln!("inferscope: warning: metrics scrape task ended abnormally: {e}");
+                None
+            }
+        }
+    } else {
+        None
+    };
 
     // Sanity check: warn if the monitored PID looks like a
     // wrapper rather than the actual workload. If every sample
@@ -229,6 +260,11 @@ async fn orchestrate(args: Args) -> Result<(), String> {
     let efficiency = gpu
         .as_ref()
         .and_then(|g| derive_efficiency(g.energy_millijoules, g.energy_source, timing.token_count));
+    // KV-cache hit rate derives from the scraped timeline: the window
+    // delta of hits over queries (ADR-011). `None` propagates when no
+    // endpoint was scraped or the window was invalid (counter reset,
+    // or zero queries).
+    let kvcache = kvcache_timeline.as_ref().and_then(derive_kvcache);
 
     let report = Report {
         request_timing,
@@ -238,6 +274,8 @@ async fn orchestrate(args: Args) -> Result<(), String> {
         resource,
         gpu,
         efficiency,
+        kvcache_timeline,
+        kvcache,
     };
 
     if args.json {

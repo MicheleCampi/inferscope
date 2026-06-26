@@ -711,6 +711,7 @@ version = "0.3.0"
 dependencies = [
  "clap",
  "is-core",
+ "is-metrics",
  "is-probe",
  "is-report",
  "is-sysmon",

@@ -15,6 +15,7 @@ path = "src/main.rs"
 [dependencies]
 is-core = { path = "../is-core" }
 is-probe = { path = "../is-probe" }
+is-metrics = { path = "../is-metrics" }
 is-sysmon = { path = "../is-sysmon" }
 is-report = { path = "../is-report" }
 clap.workspace = true

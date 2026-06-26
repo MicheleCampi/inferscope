@@ -208,6 +208,31 @@ pub struct EfficiencyMetrics {
     pub energy_source: EnergySource,
 }
 
+/// Derived KV-cache metrics for one probe run (ADR-011).
+///
+/// `vllm:prefix_cache_hits` and `vllm:prefix_cache_queries` are
+/// monotonic counters, so the meaningful figure is the delta across the
+/// probe window, not an absolute. `hits_delta` and `queries_delta` are
+/// the differences between the last and first scrape; `hit_rate` is
+/// `hits_delta / queries_delta`.
+///
+/// This is `None` on the report when the window is invalid: the counter
+/// regressed (the engine reset mid-run, so a delta would be meaningless)
+/// or no queries occurred in the window (`queries_delta == 0`, no rate to
+/// form). See [`crate::derive::derive_kvcache`].
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+pub struct KvCacheMetrics {
+    /// Cached token-blocks served over the window: the rise in
+    /// `vllm:prefix_cache_hits` from the first scrape to the last.
+    pub hits_delta: u64,
+    /// Token-blocks queried over the window: the rise in
+    /// `vllm:prefix_cache_queries`. The denominator of the rate.
+    pub queries_delta: u64,
+    /// Fraction of queried token-blocks served from cache over the
+    /// window: `hits_delta / queries_delta`, in `0.0..=1.0`.
+    pub hit_rate: f64,
+}
+
 /// The full report for one probe run: raw signals plus derived
 /// metrics, packaged together so the JSON output is a single
 /// self-contained document.
@@ -229,6 +254,16 @@ pub struct Report {
     /// and a positive token count were available (ADR-010). `None`
     /// when energy could not be measured or no tokens were produced.
     pub efficiency: Option<EfficiencyMetrics>,
+    /// The raw KV-cache timeline as scraped from the engine's
+    /// Prometheus endpoint, if any (ADR-011). `None` when no metrics
+    /// endpoint was configured or no scrape succeeded.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub kvcache_timeline: Option<is_core::KvCacheTimeline>,
+    /// Derived KV-cache metrics, if a valid window was scraped
+    /// (ADR-011). `None` when no timeline was available or the window
+    /// was invalid (counter regression, or zero queries).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub kvcache: Option<KvCacheMetrics>,
 }
 
 #[cfg(test)]
@@ -282,6 +317,8 @@ mod tests {
             }),
             gpu: None,
             efficiency: None,
+            kvcache_timeline: None,
+            kvcache: None,
         }
     }
 
@@ -319,6 +356,8 @@ mod tests {
             resource: None,
             gpu: None,
             efficiency: None,
+            kvcache_timeline: None,
+            kvcache: None,
         };
 
         let json = serde_json::to_string(&original).expect("serialize");

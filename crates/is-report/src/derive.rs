@@ -6,10 +6,10 @@
 //! collection time so that the raw signal remains the source of
 //! truth.
 
-use is_core::{RequestTiming, ResourceTimeline};
+use is_core::{KvCacheTimeline, RequestTiming, ResourceTimeline};
 
 use crate::error::ReportError;
-use crate::metrics::{LatencyDistribution, ResourceMetrics, TimingMetrics};
+use crate::metrics::{KvCacheMetrics, LatencyDistribution, ResourceMetrics, TimingMetrics};
 
 /// Computes derived timing metrics from a [`RequestTiming`].
 ///
@@ -192,6 +192,56 @@ pub fn derive_efficiency(
         // Identity: tokens/(W*s) = tokens/J (time in seconds).
         tokens_per_watt: tokens_per_joule,
         energy_source: source,
+    })
+}
+
+/// Derives KV-cache metrics from a [`KvCacheTimeline`] (ADR-011).
+///
+/// The window figure is a delta across monotonic counters: the rise in
+/// hits and queries from the first scrape to the last. Returns `None`
+/// when no valid rate can be formed:
+///
+/// - the timeline has fewer than two samples (no window to difference);
+/// - the counter regressed — a later reading is below an earlier one,
+///   meaning the engine reset mid-run, so a delta would be meaningless
+///   (the same guard `compute_energy_delta` applies to the energy
+///   counter in ADR-010);
+/// - no queries occurred over the window (`queries_delta == 0`), leaving
+///   nothing to divide by.
+///
+/// `hit_rate` is `hits_delta / queries_delta`. A well-formed window has
+/// `hits_delta <= queries_delta` (you cannot hit more blocks than you
+/// queried), so the rate lands in `0.0..=1.0`; the function does not
+/// clamp, leaving any upstream anomaly visible rather than masked.
+pub fn derive_kvcache(timeline: &KvCacheTimeline) -> Option<KvCacheMetrics> {
+    let first = timeline.samples.first()?;
+    let last = timeline.samples.last()?;
+
+    // Fewer than two distinct samples: no window to difference. (first
+    // and last being the same element yields zero deltas, caught below
+    // by the queries_delta == 0 guard, but an explicit length check
+    // makes the intent clear.)
+    if timeline.samples.len() < 2 {
+        return None;
+    }
+
+    // Counter regression guard: a monotonic counter that went backwards
+    // means the engine reset within the window. No trustworthy delta.
+    if last.hits < first.hits || last.queries < first.queries {
+        return None;
+    }
+
+    let hits_delta = last.hits - first.hits;
+    let queries_delta = last.queries - first.queries;
+
+    if queries_delta == 0 {
+        return None;
+    }
+
+    Some(KvCacheMetrics {
+        hits_delta,
+        queries_delta,
+        hit_rate: hits_delta as f64 / queries_delta as f64,
     })
 }
 
@@ -879,5 +929,74 @@ mod tests {
         assert!(
             derive_efficiency(Some(200_000), Some(is_core::EnergySource::Counter), 0).is_none()
         );
+    }
+
+    // ----- derive_kvcache (ADR-011) -----
+
+    fn kv_sample(elapsed_ns: u64, hits: u64, queries: u64) -> is_core::KvCacheSample {
+        is_core::KvCacheSample {
+            elapsed_ns,
+            hits,
+            queries,
+        }
+    }
+
+    #[test]
+    fn derive_kvcache_window_delta_and_rate() {
+        // Cache warms over the window: first scrape 10/40, last 96/196.
+        // hits_delta = 86, queries_delta = 156, rate = 86/156 = 0.5513.
+        let mut tl = is_core::KvCacheTimeline::new(1_000_000_000);
+        tl.push(kv_sample(0, 10, 40));
+        tl.push(kv_sample(1_000_000_000, 48, 120));
+        tl.push(kv_sample(2_000_000_000, 96, 196));
+        let m = derive_kvcache(&tl).expect("valid window");
+        assert_eq!(m.hits_delta, 86);
+        assert_eq!(m.queries_delta, 156);
+        assert!((m.hit_rate - (86.0 / 156.0)).abs() < 1e-12);
+    }
+
+    #[test]
+    fn derive_kvcache_two_samples_minimum() {
+        // Exactly two samples is a valid window.
+        let mut tl = is_core::KvCacheTimeline::new(1_000_000_000);
+        tl.push(kv_sample(0, 0, 0));
+        tl.push(kv_sample(1_000_000_000, 96, 196));
+        let m = derive_kvcache(&tl).expect("valid window");
+        assert_eq!(m.hits_delta, 96);
+        assert_eq!(m.queries_delta, 196);
+        assert!((m.hit_rate - (96.0 / 196.0)).abs() < 1e-12);
+    }
+
+    #[test]
+    fn derive_kvcache_empty_timeline_is_none() {
+        let tl = is_core::KvCacheTimeline::new(1_000_000_000);
+        assert!(derive_kvcache(&tl).is_none());
+    }
+
+    #[test]
+    fn derive_kvcache_single_sample_is_none() {
+        // One scrape: no window to difference.
+        let mut tl = is_core::KvCacheTimeline::new(1_000_000_000);
+        tl.push(kv_sample(0, 96, 196));
+        assert!(derive_kvcache(&tl).is_none());
+    }
+
+    #[test]
+    fn derive_kvcache_counter_regression_is_none() {
+        // The engine reset mid-window: last reading below first.
+        // A delta would be meaningless, so no metric.
+        let mut tl = is_core::KvCacheTimeline::new(1_000_000_000);
+        tl.push(kv_sample(0, 96, 196));
+        tl.push(kv_sample(1_000_000_000, 5, 12));
+        assert!(derive_kvcache(&tl).is_none());
+    }
+
+    #[test]
+    fn derive_kvcache_zero_queries_delta_is_none() {
+        // No queries occurred over the window: nothing to divide by.
+        let mut tl = is_core::KvCacheTimeline::new(1_000_000_000);
+        tl.push(kv_sample(0, 50, 100));
+        tl.push(kv_sample(1_000_000_000, 50, 100));
+        assert!(derive_kvcache(&tl).is_none());
     }
 }

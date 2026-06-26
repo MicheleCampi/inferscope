@@ -50,6 +50,10 @@ pub fn render_text(report: &Report) -> String {
         out.push('\n');
         render_efficiency(&mut out, eff);
     }
+    if let Some(kv) = &report.kvcache {
+        out.push('\n');
+        render_kvcache(&mut out, kv);
+    }
 
     out
 }
@@ -211,6 +215,23 @@ fn render_efficiency(out: &mut String, eff: &crate::metrics::EfficiencyMetrics) 
     );
 }
 
+/// Renders the KV-cache hit rate for the probe window (ADR-011).
+///
+/// The rate is the window delta of cache hits over queries; the raw
+/// deltas are shown alongside it so the figure is traceable to the
+/// counters it came from, the same way the efficiency block shows the
+/// energy and token terms behind tokens-per-joule.
+fn render_kvcache(out: &mut String, kv: &crate::metrics::KvCacheMetrics) {
+    let _ = writeln!(out, "KV-cache (prefix cache, probe window):");
+    let _ = writeln!(
+        out,
+        "  Hit rate           {:.1}%  ({} / {} token-blocks)",
+        kv.hit_rate * 100.0,
+        kv.hits_delta,
+        kv.queries_delta,
+    );
+}
+
 /// Renders one line per GPU device showing the headline metrics
 /// for that device only. Invoked after `render_gpu_usage` when
 /// `device_count > 1`, to surface per-device asymmetry that the
@@ -312,6 +333,8 @@ mod tests {
             }),
             gpu: None,
             efficiency: None,
+            kvcache_timeline: None,
+            kvcache: None,
         }
     }
 
@@ -343,6 +366,31 @@ mod tests {
         // The identity note must be present so the per-watt figure
         // is never read as independent evidence.
         assert!(text.contains("identical"));
+    }
+
+    #[test]
+    fn text_render_includes_kvcache_section_with_deltas() {
+        let mut r = sample_report();
+        r.kvcache = Some(crate::metrics::KvCacheMetrics {
+            hits_delta: 86,
+            queries_delta: 156,
+            hit_rate: 86.0 / 156.0,
+        });
+        let text = render_text(&r);
+        assert!(text.contains("KV-cache"));
+        // The rate is shown as a percentage...
+        assert!(text.contains("55.1%"));
+        // ...alongside the raw deltas it derives from.
+        assert!(text.contains("86 / 156"));
+    }
+
+    #[test]
+    fn text_render_omits_kvcache_when_missing() {
+        let mut r = sample_report();
+        r.kvcache = None;
+        let text = render_text(&r);
+        assert!(text.contains("Probe summary"));
+        assert!(!text.contains("KV-cache"));
     }
 
     #[test]
@@ -378,6 +426,8 @@ mod tests {
             resource: None,
             gpu: None,
             efficiency: None,
+            kvcache_timeline: None,
+            kvcache: None,
         };
         let text = render_text(&r);
         assert!(text.contains("Tokens generated      0"));

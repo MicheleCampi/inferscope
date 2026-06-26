@@ -54,6 +54,21 @@ pub struct Args {
     /// not set.
     #[arg(long, default_value_t = 50)]
     pub sample_period_ms: u64,
+    /// Prometheus `/metrics` endpoint to scrape for KV-cache hit rate
+    /// (ADR-011), e.g. `http://127.0.0.1:18000/metrics`. When set, a
+    /// scrape task runs in parallel with the probe and the report
+    /// carries the window hit rate. When unset, no scrape happens and
+    /// the KV-cache section is absent. The `--model` value selects the
+    /// `model_name` label series.
+    #[arg(long)]
+    pub metrics_endpoint: Option<String>,
+    /// Scrape period for `--metrics-endpoint`, in milliseconds.
+    ///
+    /// Defaults to 1000 ms — deliberately slower than the 50 ms
+    /// resource-sampling cadence, since a `/metrics` scrape is an HTTP
+    /// round-trip reading per-request application counters (ADR-011).
+    #[arg(long, default_value_t = 1000)]
+    pub metrics_period_ms: u64,
 
     /// Aggregate the monitored PID with the resource usage of
     /// its direct children.
@@ -136,6 +151,11 @@ impl Args {
     /// Returns the resource sampling period as a `Duration`.
     pub fn sample_period(&self) -> Duration {
         Duration::from_millis(self.sample_period_ms)
+    }
+
+    /// Returns the metrics scrape period as a `Duration`.
+    pub fn metrics_period(&self) -> Duration {
+        Duration::from_millis(self.metrics_period_ms)
     }
 }
 
