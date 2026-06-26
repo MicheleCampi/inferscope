@@ -31,13 +31,19 @@ use crate::parse::parse_kvcache;
 
 /// Builds the HTTP client used for scraping.
 ///
-/// The timeout is set to the sample period: a scrape that takes longer
-/// than the cadence at which we sample is past being useful, and a
-/// bounded timeout prevents an endpoint that accepts the connection but
-/// never responds from stalling the loop indefinitely.
-fn build_client(config: &MetricsConfig) -> Result<reqwest::Client, MetricsError> {
+/// The timeout is a fixed 5 seconds, independent of the scrape cadence.
+/// An earlier design tied it to the sample period, but that is wrong:
+/// the period can legitimately be set finer than one HTTP round-trip
+/// (e.g. to capture the cache-warming curve), and a localhost `/metrics`
+/// round-trip is typically several milliseconds — so a sub-round-trip
+/// timeout would fail every scrape. `MissedTickBehavior::Skip` already
+/// decouples cadence from scrape duration: a scrape slower than the
+/// period makes the loop skip missed ticks, not stall. The timeout only
+/// guards against an endpoint that accepts the connection but never
+/// responds.
+fn build_client() -> Result<reqwest::Client, MetricsError> {
     reqwest::Client::builder()
-        .timeout(config.sample_period)
+        .timeout(std::time::Duration::from_secs(5))
         .build()
         .map_err(|source| MetricsError::Http { source })
 }
@@ -111,7 +117,7 @@ pub async fn scrape_during(
 ) -> KvCacheTimeline {
     let mut timeline = KvCacheTimeline::new(config.sample_period.as_nanos() as u64);
 
-    let client = match build_client(&config) {
+    let client = match build_client() {
         Ok(c) => c,
         Err(_) => return timeline,
     };
@@ -159,7 +165,7 @@ mod tests {
             .await;
 
         let config = MetricsConfig::new(format!("{}/metrics", server.uri()), "facebook/opt-125m");
-        let client = build_client(&config).unwrap();
+        let client = build_client().unwrap();
         let sample = scrape_once(&client, &config, Instant::now()).await.unwrap();
 
         assert_eq!(sample.hits, 96);
@@ -176,7 +182,7 @@ mod tests {
             .await;
 
         let config = MetricsConfig::new(format!("{}/metrics", server.uri()), "facebook/opt-125m");
-        let client = build_client(&config).unwrap();
+        let client = build_client().unwrap();
         let err = scrape_once(&client, &config, Instant::now())
             .await
             .unwrap_err();
@@ -194,7 +200,7 @@ mod tests {
             .await;
 
         let config = MetricsConfig::new(format!("{}/metrics", server.uri()), "facebook/opt-125m");
-        let client = build_client(&config).unwrap();
+        let client = build_client().unwrap();
         let err = scrape_once(&client, &config, Instant::now())
             .await
             .unwrap_err();
