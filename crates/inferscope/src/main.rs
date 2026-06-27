@@ -375,6 +375,20 @@ async fn run_sample_only(args: &Args, start: Instant) -> Result<(), String> {
         None
     };
 
+    // Spawn the per-phase metrics scrape if --metrics-endpoint and
+    // --model were supplied (ADR-012). Not feature-gated: the scrape
+    // is an HTTP read of the engine's Prometheus endpoint, not NVML.
+    // It shares `start` with the samplers and is cancelled by the
+    // same timer below (ADR-003).
+    let phase_handle = match (args.metrics_endpoint.as_deref(), args.model.as_deref()) {
+        (Some(endpoint), Some(model)) => {
+            let cfg = MetricsConfig::with_period(endpoint, model, args.metrics_period());
+            let (cancel_tx, cancel_rx) = oneshot::channel();
+            let task = tokio::spawn(scrape_phase_during(cfg, start, cancel_rx));
+            Some((task, cancel_tx))
+        }
+        _ => None,
+    };
     // Sample for the requested duration, then cancel.
     tokio::time::sleep(duration).await;
 
@@ -402,6 +416,18 @@ async fn run_sample_only(args: &Args, start: Instant) -> Result<(), String> {
     };
     #[cfg(not(feature = "gpu-nvidia"))]
     let gpu_timeline: Option<is_core::GpuTimeline> = None;
+    let phase_timeline = if let Some((task, cancel_tx)) = phase_handle {
+        let _ = cancel_tx.send(());
+        match task.await {
+            Ok(tl) => Some(tl),
+            Err(e) => {
+                eprintln!("inferscope: warning: phase scrape task ended abnormally: {e}");
+                None
+            }
+        }
+    } else {
+        None
+    };
 
     let resource = match resource_timeline.as_ref() {
         Some(tl) => derive_resource(tl).map_err(|e| format!("report derivation failed: {e}"))?,
@@ -409,6 +435,14 @@ async fn run_sample_only(args: &Args, start: Instant) -> Result<(), String> {
     };
     let gpu = gpu_timeline.as_ref().and_then(derive_gpu);
 
+    // Apportion the sampled device energy across prefill and decode
+    // (ADR-012), using the same aggregate figure as efficiency.
+    let phase_energy = phase_timeline.as_ref().and_then(|tl| {
+        let (mj, source) = gpu
+            .as_ref()
+            .map_or((None, None), |g| (g.energy_millijoules, g.energy_source));
+        derive_phase_energy(tl, mj, source)
+    });
     let report = ResourceReport {
         pid,
         include_descendants: args.include_descendants,
@@ -416,6 +450,8 @@ async fn run_sample_only(args: &Args, start: Instant) -> Result<(), String> {
         duration_secs,
         resource,
         gpu,
+        phase_timeline,
+        phase_energy,
     };
 
     // Sample-only always emits JSON: it is meant for machine consumption
