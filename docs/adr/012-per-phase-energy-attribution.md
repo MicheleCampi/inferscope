@@ -1,6 +1,7 @@
 # ADR-012: Per-Phase Energy Attribution (Prefill vs Decode)
 
-- **Status**: Proposed
+- **Status**: Accepted
+- **Validation**: VM fixture + llm-d sim complete; real per-phase energy calibration pending on the scheduled H100 CUDA-graphs re-run (prefill-only / decode-heavy isolation)
 - **Date**: 2026-06-27
 - **Deciders**: Michele Campi
 
