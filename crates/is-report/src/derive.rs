@@ -9,7 +9,9 @@
 use is_core::{KvCacheTimeline, RequestTiming, ResourceTimeline};
 
 use crate::error::ReportError;
-use crate::metrics::{KvCacheMetrics, LatencyDistribution, ResourceMetrics, TimingMetrics};
+use crate::metrics::{
+    KvCacheMetrics, LatencyDistribution, PhaseEnergyMetrics, ResourceMetrics, TimingMetrics,
+};
 
 /// Computes derived timing metrics from a [`RequestTiming`].
 ///
@@ -466,6 +468,102 @@ pub fn derive_gpu(timeline: &is_core::GpuTimeline) -> Option<crate::metrics::Gpu
         energy_millijoules,
         energy_source,
         per_device,
+    })
+}
+
+/// Apportions device-level energy across prefill and decode (ADR-012).
+///
+/// Takes the aggregate energy figure already derived from the GPU
+/// timeline (counter-preferred, trapezoidal fallback — the same figure
+/// `derive_efficiency` consumes) and the scraped [`PhaseTimeline`], and
+/// projects that single total onto two bases: time-share
+/// `prefill_ns / (prefill_ns + decode_ns)` and token-share
+/// `prompt_tok / (prompt_tok + gen_tok)`.
+///
+/// Each split is conservative: the prefill side is rounded from its
+/// share, the decode side is the remainder, so the pair sums to the
+/// total exactly. The first-class signal is their divergence on the
+/// prefill side — `share_prefill_time - share_prefill_tok` — which
+/// quantifies the energy-per-token asymmetry between compute-bound
+/// prefill and memory-bound decode.
+///
+/// Returns `None` (the whole struct withheld, ADR-011 discipline) when:
+/// the timeline has fewer than two samples; any cumulative counter
+/// regressed within the window (engine reset); no energy figure or
+/// source was available to apportion; or either basis has a zero delta,
+/// which would make its share undefined. Because the divergence depends
+/// on both shares, a single undefined share withholds the entire struct.
+pub fn derive_phase_energy(
+    timeline: &is_core::PhaseTimeline,
+    energy_millijoules: Option<u64>,
+    energy_source: Option<is_core::EnergySource>,
+) -> Option<PhaseEnergyMetrics> {
+    let first = timeline.samples.first()?;
+    let last = timeline.samples.last()?;
+    if timeline.samples.len() < 2 {
+        return None;
+    }
+
+    // Energy must exist to apportion. The source is required for the
+    // same reason `derive_efficiency` requires it: an energy figure
+    // without a provenance is not a figure we report on.
+    let total_mj = energy_millijoules?;
+    let _source = energy_source?;
+    if total_mj == 0 {
+        return None;
+    }
+
+    // Counter regression guard: every series is a monotonic cumulative
+    // counter. Any backward step means the engine reset; no trustworthy
+    // delta, withhold the whole struct.
+    if last.prefill_ns < first.prefill_ns
+        || last.decode_ns < first.decode_ns
+        || last.prompt_tokens < first.prompt_tokens
+        || last.generation_tokens < first.generation_tokens
+    {
+        return None;
+    }
+
+    let prefill_ns_delta = last.prefill_ns - first.prefill_ns;
+    let decode_ns_delta = last.decode_ns - first.decode_ns;
+    let prompt_tokens_delta = last.prompt_tokens - first.prompt_tokens;
+    let generation_tokens_delta = last.generation_tokens - first.generation_tokens;
+
+    // Time-share basis. A zero phase-time delta makes the share
+    // undefined; withhold.
+    let time_total = prefill_ns_delta + decode_ns_delta;
+    if time_total == 0 {
+        return None;
+    }
+    let share_prefill_time = prefill_ns_delta as f64 / time_total as f64;
+
+    // Token-share basis. A zero token delta makes the share undefined;
+    // withhold.
+    let token_total = prompt_tokens_delta + generation_tokens_delta;
+    if token_total == 0 {
+        return None;
+    }
+    let share_prefill_tok = prompt_tokens_delta as f64 / token_total as f64;
+
+    // Conservative split: prefill rounded from share, decode the
+    // remainder, so each pair sums to total_mj exactly.
+    let energy_prefill_by_time_mj = (total_mj as f64 * share_prefill_time).round() as u64;
+    let energy_decode_by_time_mj = total_mj - energy_prefill_by_time_mj;
+    let energy_prefill_by_tokens_mj = (total_mj as f64 * share_prefill_tok).round() as u64;
+    let energy_decode_by_tokens_mj = total_mj - energy_prefill_by_tokens_mj;
+
+    let phase_energy_divergence = share_prefill_time - share_prefill_tok;
+
+    Some(PhaseEnergyMetrics {
+        prefill_ns_delta,
+        decode_ns_delta,
+        prompt_tokens_delta,
+        generation_tokens_delta,
+        energy_prefill_by_time_mj,
+        energy_decode_by_time_mj,
+        energy_prefill_by_tokens_mj,
+        energy_decode_by_tokens_mj,
+        phase_energy_divergence,
     })
 }
 
@@ -998,5 +1096,128 @@ mod tests {
         tl.push(kv_sample(0, 50, 100));
         tl.push(kv_sample(1_000_000_000, 50, 100));
         assert!(derive_kvcache(&tl).is_none());
+    }
+
+    fn phase_sample(
+        elapsed_ns: u64,
+        prompt_tokens: u64,
+        generation_tokens: u64,
+        prefill_ns: u64,
+        decode_ns: u64,
+    ) -> is_core::PhaseSample {
+        is_core::PhaseSample {
+            elapsed_ns,
+            prompt_tokens,
+            generation_tokens,
+            prefill_ns,
+            decode_ns,
+        }
+    }
+
+    fn phase_timeline_from(samples: Vec<is_core::PhaseSample>) -> is_core::PhaseTimeline {
+        let mut tl = is_core::PhaseTimeline::new(1_000_000);
+        for s in samples {
+            tl.push(s);
+        }
+        tl
+    }
+
+    #[test]
+    fn derive_phase_energy_apportions_both_bases_from_fixture_deltas() {
+        // first all-zero, last at the v0.8.2 fixture values.
+        let tl = phase_timeline_from(vec![
+            phase_sample(0, 0, 0, 0, 0),
+            phase_sample(1_000_000, 196, 38, 14493, 28432),
+        ]);
+        let m = derive_phase_energy(&tl, Some(100_000), Some(is_core::EnergySource::Counter))
+            .expect("valid window with energy should apportion");
+
+        assert_eq!(m.prefill_ns_delta, 14493);
+        assert_eq!(m.decode_ns_delta, 28432);
+        assert_eq!(m.prompt_tokens_delta, 196);
+        assert_eq!(m.generation_tokens_delta, 38);
+
+        // time-share: 14493 / 42925 = 0.3376354..., x100000 -> 33764.
+        assert_eq!(m.energy_prefill_by_time_mj, 33764);
+        assert_eq!(m.energy_decode_by_time_mj, 100_000 - 33764);
+        // token-share: 196 / 234 = 0.8376068..., x100000 -> 83761.
+        assert_eq!(m.energy_prefill_by_tokens_mj, 83761);
+        assert_eq!(m.energy_decode_by_tokens_mj, 100_000 - 83761);
+
+        // Conservative split: each basis sums to the total exactly.
+        assert_eq!(
+            m.energy_prefill_by_time_mj + m.energy_decode_by_time_mj,
+            100_000
+        );
+        assert_eq!(
+            m.energy_prefill_by_tokens_mj + m.energy_decode_by_tokens_mj,
+            100_000
+        );
+
+        // divergence = 0.3376354 - 0.8376068 = -0.4999714...
+        assert!((m.phase_energy_divergence - (-0.4999714)).abs() < 1e-6);
+    }
+
+    #[test]
+    fn derive_phase_energy_empty_timeline_is_none() {
+        let tl = phase_timeline_from(vec![]);
+        assert!(
+            derive_phase_energy(&tl, Some(100_000), Some(is_core::EnergySource::Counter)).is_none()
+        );
+    }
+
+    #[test]
+    fn derive_phase_energy_single_sample_is_none() {
+        let tl = phase_timeline_from(vec![phase_sample(0, 196, 38, 14493, 28432)]);
+        assert!(
+            derive_phase_energy(&tl, Some(100_000), Some(is_core::EnergySource::Counter)).is_none()
+        );
+    }
+
+    #[test]
+    fn derive_phase_energy_without_energy_is_none() {
+        let tl = phase_timeline_from(vec![
+            phase_sample(0, 0, 0, 0, 0),
+            phase_sample(1_000_000, 196, 38, 14493, 28432),
+        ]);
+        assert!(derive_phase_energy(&tl, None, Some(is_core::EnergySource::Counter)).is_none());
+        assert!(derive_phase_energy(&tl, Some(100_000), None).is_none());
+        assert!(derive_phase_energy(&tl, Some(0), Some(is_core::EnergySource::Counter)).is_none());
+    }
+
+    #[test]
+    fn derive_phase_energy_counter_regression_is_none() {
+        // last.prefill_ns < first.prefill_ns: engine reset.
+        let tl = phase_timeline_from(vec![
+            phase_sample(0, 100, 20, 20000, 30000),
+            phase_sample(1_000_000, 196, 38, 14493, 28432),
+        ]);
+        assert!(
+            derive_phase_energy(&tl, Some(100_000), Some(is_core::EnergySource::Counter)).is_none()
+        );
+    }
+
+    #[test]
+    fn derive_phase_energy_zero_time_delta_is_none() {
+        // tokens advance but phase-time does not: time-share undefined.
+        let tl = phase_timeline_from(vec![
+            phase_sample(0, 100, 20, 14493, 28432),
+            phase_sample(1_000_000, 196, 38, 14493, 28432),
+        ]);
+        assert!(
+            derive_phase_energy(&tl, Some(100_000), Some(is_core::EnergySource::Counter)).is_none()
+        );
+    }
+
+    #[test]
+    fn derive_phase_energy_zero_token_delta_is_none() {
+        // phase-time advances but tokens do not: token-share undefined.
+        let tl = phase_timeline_from(vec![
+            phase_sample(0, 196, 38, 5000, 10000),
+            phase_sample(1_000_000, 196, 38, 14493, 28432),
+        ]);
+        assert!(
+            derive_phase_energy(&tl, Some(100_000), Some(is_core::EnergySource::Counter)).is_none()
+        );
     }
 }

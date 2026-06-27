@@ -233,6 +233,59 @@ pub struct KvCacheMetrics {
     pub hit_rate: f64,
 }
 
+/// Per-phase energy attribution over the scrape window (ADR-012).
+///
+/// This is an **apportionment of device-level NVML energy, not a
+/// measurement of phase energy** — and that caveat holds for *both*
+/// apportionments equally. Under interleaved execution (continuous
+/// batching, chunked prefill) no temporal cut isolates a phase on the
+/// device counter; `prefill + decode` is moreover only a fraction of
+/// inference time, itself a fraction of wall-clock. Both figures are
+/// projections of the same total energy onto two different bases.
+///
+/// The total energy apportioned is the aggregate figure from
+/// [`GpuMetrics`] (counter-preferred, trapezoidal fallback). Each basis
+/// splits it conservatively: the prefill side is rounded from the share,
+/// the decode side is the remainder, so `prefill + decode` equals the
+/// total exactly for each basis.
+///
+/// Withheld (`None`) when the window has fewer than two samples, any
+/// cumulative counter regresses (engine reset), no energy figure exists
+/// to apportion, or either basis has a zero delta (a zero phase-time
+/// delta makes the time-share undefined; a zero token delta makes the
+/// token-share undefined). Because the divergence needs both shares, a
+/// missing apportionment withholds the whole struct rather than emitting
+/// half of it — the same all-or-nothing discipline as [`KvCacheMetrics`].
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+pub struct PhaseEnergyMetrics {
+    /// Window delta of cumulative prefill time, nanoseconds.
+    pub prefill_ns_delta: u64,
+    /// Window delta of cumulative decode time, nanoseconds.
+    pub decode_ns_delta: u64,
+    /// Window delta of cumulative prompt (prefill) tokens.
+    pub prompt_tokens_delta: u64,
+    /// Window delta of cumulative generation (decode) tokens.
+    pub generation_tokens_delta: u64,
+    /// Energy apportioned to prefill by time-share
+    /// `prefill_ns / (prefill_ns + decode_ns)`, millijoules.
+    pub energy_prefill_by_time_mj: u64,
+    /// Energy apportioned to decode by time-share, the remainder of the
+    /// total after the prefill time-share, millijoules.
+    pub energy_decode_by_time_mj: u64,
+    /// Energy apportioned to prefill by token-share
+    /// `prompt_tok / (prompt_tok + gen_tok)`, millijoules.
+    pub energy_prefill_by_tokens_mj: u64,
+    /// Energy apportioned to decode by token-share, the remainder of the
+    /// total after the prefill token-share, millijoules.
+    pub energy_decode_by_tokens_mj: u64,
+    /// The first-class signal: prefill time-share minus prefill
+    /// token-share. Quantifies the energy-per-token asymmetry between
+    /// compute-bound prefill and memory-bound decode. Negative when
+    /// decode spreads the energy budget over proportionally more tokens
+    /// than its time-share would suggest.
+    pub phase_energy_divergence: f64,
+}
+
 /// The full report for one probe run: raw signals plus derived
 /// metrics, packaged together so the JSON output is a single
 /// self-contained document.
@@ -264,6 +317,18 @@ pub struct Report {
     /// was invalid (counter regression, or zero queries).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub kvcache: Option<KvCacheMetrics>,
+    /// The raw per-phase timeline as scraped from the engine's
+    /// Prometheus endpoint, if any (ADR-012). `None` when no metrics
+    /// endpoint was configured or no scrape succeeded.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub phase_timeline: Option<is_core::PhaseTimeline>,
+    /// Derived per-phase energy attribution, if a valid window was
+    /// scraped and an energy figure existed to apportion (ADR-012).
+    /// `None` when no timeline was available, a counter regressed, no
+    /// energy was measured, or either apportionment basis had a zero
+    /// delta.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub phase_energy: Option<PhaseEnergyMetrics>,
 }
 
 #[cfg(test)]
@@ -319,6 +384,8 @@ mod tests {
             efficiency: None,
             kvcache_timeline: None,
             kvcache: None,
+            phase_timeline: None,
+            phase_energy: None,
         }
     }
 
@@ -358,6 +425,8 @@ mod tests {
             efficiency: None,
             kvcache_timeline: None,
             kvcache: None,
+            phase_timeline: None,
+            phase_energy: None,
         };
 
         let json = serde_json::to_string(&original).expect("serialize");

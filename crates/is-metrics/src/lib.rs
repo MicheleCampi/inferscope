@@ -30,4 +30,4 @@ pub mod scrape;
 pub use config::MetricsConfig;
 pub use error::MetricsError;
 pub use parse::parse_kvcache;
-pub use scrape::{scrape_during, scrape_once};
+pub use scrape::{scrape_during, scrape_once, scrape_phase_during, scrape_phase_once};

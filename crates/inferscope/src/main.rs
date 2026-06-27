@@ -14,11 +14,11 @@ use std::time::{Duration, Instant};
 use clap::Parser;
 use tokio::sync::oneshot;
 
-use is_metrics::{scrape_during, MetricsConfig};
+use is_metrics::{scrape_during, scrape_phase_during, MetricsConfig};
 use is_probe::{config::ProbeConfig, runner::run as run_probe};
 use is_report::{
-    derive_efficiency, derive_gpu, derive_kvcache, derive_resource, derive_timing, render_json,
-    render_resource_json, render_text, Report, ResourceReport,
+    derive_efficiency, derive_gpu, derive_kvcache, derive_phase_energy, derive_resource,
+    derive_timing, render_json, render_resource_json, render_text, Report, ResourceReport,
 };
 use is_sysmon::{config::SysmonConfig, sampler::sample_during};
 
@@ -149,10 +149,19 @@ async fn orchestrate(args: Args) -> Result<(), String> {
     // model_name label series.
     let metrics_handle = match (args.metrics_endpoint.as_deref(), args.model.as_deref()) {
         (Some(endpoint), Some(model)) => {
-            let cfg = MetricsConfig::with_period(endpoint, model, args.metrics_period());
-            let (cancel_tx, cancel_rx) = oneshot::channel();
-            let task = tokio::spawn(scrape_during(cfg, start, cancel_rx));
-            Some((task, cancel_tx))
+            // Both scrapes hit the same /metrics endpoint over the
+            // same run window, sharing `start` and each its own cancel
+            // (ADR-012). They are separate loops, not one GET split two
+            // ways: KV hit-rate and phase energy are independent
+            // first/last reductions, and keeping them separate leaves
+            // the ADR-011 KV path untouched.
+            let kv_cfg = MetricsConfig::with_period(endpoint, model, args.metrics_period());
+            let phase_cfg = MetricsConfig::with_period(endpoint, model, args.metrics_period());
+            let (kv_cancel, kv_rx) = oneshot::channel();
+            let (phase_cancel, phase_rx) = oneshot::channel();
+            let kv_task = tokio::spawn(scrape_during(kv_cfg, start, kv_rx));
+            let phase_task = tokio::spawn(scrape_phase_during(phase_cfg, start, phase_rx));
+            Some((kv_task, kv_cancel, phase_task, phase_cancel))
         }
         _ => None,
     };
@@ -206,18 +215,28 @@ async fn orchestrate(args: Args) -> Result<(), String> {
     // Stop the metrics scrape (if running) and collect its timeline,
     // same shape as the other samplers. A panicked task is non-fatal:
     // warn and report whatever the probe captured (ADR-011).
-    let kvcache_timeline = if let Some((task, cancel_tx)) = metrics_handle {
-        let _ = cancel_tx.send(());
-        match task.await {
-            Ok(timeline) => Some(timeline),
-            Err(e) => {
-                eprintln!("inferscope: warning: metrics scrape task ended abnormally: {e}");
-                None
-            }
-        }
-    } else {
-        None
-    };
+    let (kvcache_timeline, phase_timeline) =
+        if let Some((kv_task, kv_cancel, phase_task, phase_cancel)) = metrics_handle {
+            let _ = kv_cancel.send(());
+            let _ = phase_cancel.send(());
+            let kv = match kv_task.await {
+                Ok(timeline) => Some(timeline),
+                Err(e) => {
+                    eprintln!("inferscope: warning: metrics scrape task ended abnormally: {e}");
+                    None
+                }
+            };
+            let phase = match phase_task.await {
+                Ok(timeline) => Some(timeline),
+                Err(e) => {
+                    eprintln!("inferscope: warning: phase scrape task ended abnormally: {e}");
+                    None
+                }
+            };
+            (kv, phase)
+        } else {
+            (None, None)
+        };
 
     // Sanity check: warn if the monitored PID looks like a
     // wrapper rather than the actual workload. If every sample
@@ -265,6 +284,17 @@ async fn orchestrate(args: Args) -> Result<(), String> {
     // endpoint was scraped or the window was invalid (counter reset,
     // or zero queries).
     let kvcache = kvcache_timeline.as_ref().and_then(derive_kvcache);
+    // Per-phase energy attribution apportions the aggregate GPU energy
+    // figure across prefill and decode by two bases (ADR-012). `None`
+    // propagates when no phase timeline was scraped, a counter
+    // regressed, no energy existed to apportion, or a basis delta was
+    // zero.
+    let phase_energy = phase_timeline.as_ref().and_then(|tl| {
+        let (mj, source) = gpu
+            .as_ref()
+            .map_or((None, None), |g| (g.energy_millijoules, g.energy_source));
+        derive_phase_energy(tl, mj, source)
+    });
 
     let report = Report {
         request_timing,
@@ -276,6 +306,8 @@ async fn orchestrate(args: Args) -> Result<(), String> {
         efficiency,
         kvcache_timeline,
         kvcache,
+        phase_timeline,
+        phase_energy,
     };
 
     if args.json {
