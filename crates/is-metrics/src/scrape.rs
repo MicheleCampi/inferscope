@@ -21,13 +21,13 @@
 
 use std::time::Instant;
 
-use is_core::{KvCacheSample, KvCacheTimeline};
+use is_core::{KvCacheSample, KvCacheTimeline, PhaseSample, PhaseTimeline};
 use tokio::sync::oneshot;
 use tokio::time::{interval, MissedTickBehavior};
 
 use crate::config::MetricsConfig;
 use crate::error::MetricsError;
-use crate::parse::parse_kvcache;
+use crate::parse::{parse_kvcache, parse_phase};
 
 /// Builds the HTTP client used for scraping.
 ///
@@ -147,6 +147,102 @@ pub async fn scrape_during(
     timeline
 }
 
+/// Scrapes the endpoint once and returns one phase sample.
+///
+/// The phase twin of [`scrape_once`]. Same timestamp discipline: the
+/// `elapsed_ns` origin is taken immediately before the request is
+/// issued, keeping it comparable with every other sampler. Same failure
+/// modes — `Http` on a request error, `Status` on a non-success code,
+/// `Parse` when the body lacks any of the four phase series for the
+/// configured model.
+pub async fn scrape_phase_once(
+    client: &reqwest::Client,
+    config: &MetricsConfig,
+    start: Instant,
+) -> Result<PhaseSample, MetricsError> {
+    let elapsed_ns = start.elapsed().as_nanos() as u64;
+
+    let response = client
+        .get(&config.endpoint)
+        .send()
+        .await
+        .map_err(|source| MetricsError::Http { source })?;
+
+    let status = response.status();
+    if !status.is_success() {
+        return Err(MetricsError::Status {
+            status: status.as_u16(),
+        });
+    }
+
+    let body = response
+        .text()
+        .await
+        .map_err(|source| MetricsError::Http { source })?;
+
+    let (prompt_tokens, generation_tokens, prefill_ns, decode_ns) =
+        parse_phase(&body, &config.model_name)?;
+
+    Ok(PhaseSample {
+        elapsed_ns,
+        prompt_tokens,
+        generation_tokens,
+        prefill_ns,
+        decode_ns,
+    })
+}
+
+/// Runs the phase scrape loop until cancelled.
+///
+/// The phase twin of [`scrape_during`], and deliberately a separate loop
+/// rather than folded into the KV scrape (ADR-012): the two derivations
+/// are independent first/last reductions over the same run window, so
+/// they share `start` and the cancel signal — the shared clock that the
+/// positioning rests on — but not a single GET. Keeping them separate
+/// leaves the green ADR-011 KV path untouched; the orchestrator spawns
+/// this as a second best-effort task and folds `PhaseTimeline` at the
+/// same stage as the KV timeline.
+///
+/// Same contract as the KV loop: `MissedTickBehavior::Skip`, a `biased`
+/// cancel arm that wins over the tick, per-tick errors swallowed, and an
+/// empty timeline (never a propagated error) if the client cannot be
+/// built.
+pub async fn scrape_phase_during(
+    config: MetricsConfig,
+    start: Instant,
+    mut cancel: oneshot::Receiver<()>,
+) -> PhaseTimeline {
+    let mut timeline = PhaseTimeline::new(config.sample_period.as_nanos() as u64);
+
+    let client = match build_client() {
+        Ok(c) => c,
+        Err(_) => return timeline,
+    };
+
+    let mut ticker = interval(config.sample_period);
+    ticker.set_missed_tick_behavior(MissedTickBehavior::Skip);
+
+    loop {
+        tokio::select! {
+            biased;
+
+            _ = &mut cancel => break,
+
+            _ = ticker.tick() => {
+                match scrape_phase_once(&client, &config, start).await {
+                    Ok(sample) => timeline.push(sample),
+                    Err(_) => {
+                        // Best-effort: swallow per-tick errors, same as
+                        // the KV loop.
+                    }
+                }
+            }
+        }
+    }
+
+    timeline
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -248,6 +344,87 @@ mod tests {
         for s in &timeline.samples {
             assert_eq!(s.hits, 96);
             assert_eq!(s.queries, 196);
+        }
+    }
+
+    #[tokio::test]
+    async fn scrape_phase_once_parses_the_fixture_body() {
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path("/metrics"))
+            .respond_with(ResponseTemplate::new(200).set_body_string(FIXTURE))
+            .mount(&server)
+            .await;
+
+        let config = MetricsConfig::new(format!("{}/metrics", server.uri()), "facebook/opt-125m");
+        let client = build_client().unwrap();
+        let sample = scrape_phase_once(&client, &config, Instant::now())
+            .await
+            .unwrap();
+
+        assert_eq!(sample.prompt_tokens, 196);
+        assert_eq!(sample.generation_tokens, 38);
+        assert_eq!(sample.prefill_ns, 14493);
+        assert_eq!(sample.decode_ns, 28432);
+    }
+
+    #[tokio::test]
+    async fn scrape_phase_once_surfaces_non_success_status() {
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path("/metrics"))
+            .respond_with(ResponseTemplate::new(503))
+            .mount(&server)
+            .await;
+
+        let config = MetricsConfig::new(format!("{}/metrics", server.uri()), "facebook/opt-125m");
+        let client = build_client().unwrap();
+        let err = scrape_phase_once(&client, &config, Instant::now())
+            .await
+            .unwrap_err();
+
+        assert!(matches!(err, MetricsError::Status { status: 503 }));
+    }
+
+    #[tokio::test]
+    async fn scrape_phase_during_returns_empty_timeline_if_cancelled_immediately() {
+        let (tx, rx) = oneshot::channel();
+        let config = MetricsConfig::new("http://127.0.0.1:1/metrics", "m");
+        tx.send(()).unwrap();
+        let timeline = scrape_phase_during(config, Instant::now(), rx).await;
+        assert!(timeline.is_empty());
+    }
+
+    #[tokio::test]
+    async fn scrape_phase_during_collects_samples_until_cancelled() {
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path("/metrics"))
+            .respond_with(ResponseTemplate::new(200).set_body_string(FIXTURE))
+            .mount(&server)
+            .await;
+
+        let config = MetricsConfig::with_period(
+            format!("{}/metrics", server.uri()),
+            "facebook/opt-125m",
+            std::time::Duration::from_millis(20),
+        );
+        let (tx, rx) = oneshot::channel();
+        let handle = tokio::spawn(scrape_phase_during(config, Instant::now(), rx));
+
+        tokio::time::sleep(std::time::Duration::from_millis(90)).await;
+        tx.send(()).unwrap();
+        let timeline = handle.await.unwrap();
+
+        assert!(
+            !timeline.is_empty(),
+            "expected at least one sample over ~90ms at 20ms cadence"
+        );
+        for s in &timeline.samples {
+            assert_eq!(s.prompt_tokens, 196);
+            assert_eq!(s.generation_tokens, 38);
+            assert_eq!(s.prefill_ns, 14493);
+            assert_eq!(s.decode_ns, 28432);
         }
     }
 }
