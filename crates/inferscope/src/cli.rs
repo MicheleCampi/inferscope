@@ -357,6 +357,35 @@ mod tests {
     }
 
     #[test]
+    fn sample_only_accepts_metrics_endpoint_and_model() {
+        // The CUDA-graphs experiment attaches via --sample-only and also
+        // scrapes per-phase metrics (ADR-012). --model is not required in
+        // sample-only mode but must remain permitted, so the phase scrape
+        // can select its model_name label series.
+        let args = Args::try_parse_from([
+            "inferscope",
+            "--sample-only",
+            "--pid",
+            "4242",
+            "--duration-secs",
+            "30",
+            "--metrics-endpoint",
+            "http://localhost:8000/metrics",
+            "--model",
+            "Qwen/Qwen2.5-7B-Instruct",
+        ])
+        .expect("sample-only with metrics-endpoint + model should parse");
+        assert!(args.sample_only);
+        assert_eq!(args.pid, Some(4242));
+        assert_eq!(args.duration_secs, Some(30));
+        assert_eq!(
+            args.metrics_endpoint.as_deref(),
+            Some("http://localhost:8000/metrics")
+        );
+        assert_eq!(args.model.as_deref(), Some("Qwen/Qwen2.5-7B-Instruct"));
+    }
+
+    #[test]
     fn sample_only_requires_duration_secs() {
         // --sample-only without --duration-secs must fail (required_if_eq).
         let result = Args::try_parse_from(["inferscope", "--sample-only", "--pid", "4242"]);
