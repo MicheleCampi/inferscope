@@ -24,6 +24,8 @@ left intact as a historical record.
 | [ADR-009](009-sample-only-mode.md) | Sample-Only Mode | Accepted |
 | [ADR-010](010-energy-and-efficiency-metrics.md) | Energy Consumption and Efficiency Metrics | Accepted |
 | [ADR-011](011-prometheus-vllm-metric-source.md) | Prometheus vLLM Metric Source for KV-Cache Hit Rate | Accepted |
+| [ADR-012](012-per-phase-energy-attribution.md) | Per-Phase Energy Attribution (Prefill vs Decode) | Accepted |
+| [ADR-013](013-trajectory-level-attribution.md) | Trajectory-Level Energy and Cache Attribution for Agentic Workloads | Accepted |
 
 ## Format
 
