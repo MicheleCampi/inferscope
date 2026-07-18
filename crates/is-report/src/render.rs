@@ -338,6 +338,7 @@ mod tests {
             kvcache: None,
             phase_timeline: None,
             phase_energy: None,
+            trajectory: None,
         }
     }
 
@@ -434,6 +435,7 @@ mod tests {
             kvcache: None,
             phase_timeline: None,
             phase_energy: None,
+            trajectory: None,
         };
         let text = render_text(&r);
         assert!(text.contains("Tokens generated      0"));

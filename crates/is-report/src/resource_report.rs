@@ -55,6 +55,12 @@ pub struct ResourceReport {
     /// energy was sampled, or either apportionment basis had a zero delta.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub phase_energy: Option<PhaseEnergyMetrics>,
+    /// Derived per-step trajectory attribution over the sampling
+    /// window, if a step file was supplied and the join was valid
+    /// (ADR-013). `None` when no steps were provided, the anchor is
+    /// absent, no GPU energy basis existed, or a counter regressed.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub trajectory: Option<crate::trajectory::TrajectoryMetrics>,
 }
 
 /// Render a `ResourceReport` as pretty JSON.
@@ -88,6 +94,7 @@ mod tests {
                 energy_decode_by_tokens_mj: 16239,
                 phase_energy_divergence: -0.4999714,
             }),
+            trajectory: None,
         };
         let json = render_resource_json(&report).unwrap();
         let back: ResourceReport = serde_json::from_str(&json).unwrap();
@@ -106,6 +113,7 @@ mod tests {
             gpu: None,
             phase_timeline: None,
             phase_energy: None,
+            trajectory: None,
         };
         let json = render_resource_json(&report).unwrap();
         assert!(!json.contains("phase_timeline"));

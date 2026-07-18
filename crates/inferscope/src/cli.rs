@@ -69,6 +69,14 @@ pub struct Args {
     /// round-trip reading per-request application counters (ADR-011).
     #[arg(long, default_value_t = 1000)]
     pub metrics_period_ms: u64,
+    /// Driver-side step file (JSONL, one step object per line) for
+    /// trajectory-level attribution (ADR-013). When set, the report
+    /// carries per-step energy and token figures joined offline on
+    /// the wall-clock anchor. When unset, no trajectory section is
+    /// derived. The file is read after the run completes; a
+    /// structurally invalid file is a fatal error naming the line.
+    #[arg(long)]
+    pub steps_file: Option<std::path::PathBuf>,
 
     /// Aggregate the monitored PID with the resource usage of
     /// its direct children.

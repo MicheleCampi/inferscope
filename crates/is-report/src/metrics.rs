@@ -336,6 +336,12 @@ pub struct Report {
     /// produced before ADR-013.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub reference_instant_unix_ns: Option<u64>,
+    /// Derived per-step trajectory attribution, if a step file was
+    /// supplied and the join was valid (ADR-013). `None` when no
+    /// steps were provided, the report lacks the wall-clock anchor,
+    /// no GPU energy basis existed, or a counter regressed.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub trajectory: Option<crate::trajectory::TrajectoryMetrics>,
 }
 
 #[cfg(test)]
@@ -415,6 +421,7 @@ mod tests {
             kvcache: None,
             phase_timeline: None,
             phase_energy: None,
+            trajectory: None,
         }
     }
 
@@ -457,6 +464,7 @@ mod tests {
             kvcache: None,
             phase_timeline: None,
             phase_energy: None,
+            trajectory: None,
         };
 
         let json = serde_json::to_string(&original).expect("serialize");

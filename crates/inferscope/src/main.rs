@@ -317,7 +317,23 @@ async fn orchestrate(args: Args) -> Result<(), String> {
         kvcache,
         phase_timeline,
         phase_energy,
+        trajectory: None,
         reference_instant_unix_ns,
+    };
+    // Trajectory-level attribution (ADR-013): offline join of the
+    // driver's step boundaries against the report's timelines.
+    // Withholding conditions inside `derive_trajectory` propagate as
+    // an absent section, not errors.
+    let report = match args.steps_file.as_deref() {
+        Some(path) => {
+            let steps = read_steps(path)?;
+            let trajectory = is_report::derive_trajectory(&report, &steps);
+            Report {
+                trajectory,
+                ..report
+            }
+        }
+        None => report,
     };
 
     if args.json {
@@ -347,6 +363,16 @@ async fn orchestrate(args: Args) -> Result<(), String> {
 /// Cancellation is driven by a timer of `duration_secs` rather than
 /// by probe completion (there is no probe here). Emits a
 /// resource-only report. See ADR-009.
+/// Reads and parses the driver step file (ADR-013). Structural
+/// errors are fatal and name the offending line — the file is user
+/// input, and a broken file is a broken input, not a withholding
+/// condition.
+fn read_steps(path: &std::path::Path) -> Result<Vec<is_report::StepRecord>, String> {
+    let content = std::fs::read_to_string(path)
+        .map_err(|e| format!("cannot read steps file {}: {e}", path.display()))?;
+    is_report::parse_steps(&content).map_err(|e| format!("steps file {}: {e}", path.display()))
+}
+
 async fn run_sample_only(
     args: &Args,
     start: Instant,
@@ -457,6 +483,23 @@ async fn run_sample_only(
             .map_or((None, None), |g| (g.energy_millijoules, g.energy_source));
         derive_phase_energy(tl, mj, source)
     });
+    // Trajectory-level attribution (ADR-013) in attach mode: the
+    // sample-only path holds the raw timelines directly. No KV-cache
+    // scrape exists in this path, so that slice is absent by
+    // construction.
+    let trajectory = match args.steps_file.as_deref() {
+        Some(path) => {
+            let steps = read_steps(path)?;
+            is_report::derive_trajectory_from_timelines(
+                reference_instant_unix_ns,
+                gpu_timeline.as_ref(),
+                None,
+                phase_timeline.as_ref(),
+                &steps,
+            )
+        }
+        None => None,
+    };
     let report = ResourceReport {
         reference_instant_unix_ns,
         pid,
@@ -467,6 +510,7 @@ async fn run_sample_only(
         gpu,
         phase_timeline,
         phase_energy,
+        trajectory,
     };
 
     // Sample-only always emits JSON: it is meant for machine consumption
