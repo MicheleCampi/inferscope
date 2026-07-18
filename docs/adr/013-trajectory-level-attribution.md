@@ -127,10 +127,10 @@ window in Report coordinates is:
 and every existing timeline is sliced by binary search over `elapsed_ns` —
 the exact access pattern ADR-003 already names for sample lookup. The
 sliced series are the ones the house already produces per tick: GPU power
-and cumulative device energy (ADR-010), KV-cache counters (ADR-011), phase
-counters (ADR-012). Per-step figures come out as window deltas between the
-samples bracketing the step boundaries, the same first-sample/last-sample
-delta semantics ADR-010 and ADR-011 use for the whole run — applied to a
+samples (ADR-010), KV-cache counters (ADR-011), phase counters (ADR-012).
+For the counter series, per-step figures come out as window deltas between
+the samples bracketing the step boundaries, the same first-sample/last-sample
+delta semantics ADR-011 and ADR-012 use for the whole run — applied to a
 narrower window. Nothing about the sampling side changes: same tick, same
 samplers, same raw types. The step cut exists purely in `is-report`.
 
@@ -140,6 +140,24 @@ the sample period yields at most one bracketing interval. This is inherent
 to a sampling profiler and is declared per-step (each `StepMetrics` carries
 the number of samples its window contained) rather than hidden by
 interpolation, which would manufacture precision the sampler does not have.
+
+Energy is the one series with no per-tick cumulative counter to delta: the
+NVML energy counter (ADR-010) is read as a whole-run delta, not sampled per
+tick, and the sampling side does not change here. Per-step energy is
+therefore the trapezoidal integral of sampled power over the inter-sample
+segments fully contained in the step window — the same integration basis
+ADR-010 already uses as its fallback — carried in integer arithmetic
+(doubled mW·ns, floored to mJ once at the end). A segment straddling a step
+boundary belongs to no step and lands in the unattributed remainder. Two
+consequences follow. First, the reconciliation is exact by segment
+accounting, not approximate: disjoint step windows partition the run's
+segments into per-step subsets plus a remainder, so steps plus unattributed
+equal the whole-run figure on the same basis, and the tests assert
+equality. Second, the trajectory layer's `total_energy_mj` is
+integration-based even when the ADR-010 headline figure is counter-grade;
+the two are separate figures on declared bases, and mixing them would make
+the reconciliation inexact by construction — the report keeps them apart
+rather than reconciling across bases.
 
 ### Derived layer: `TrajectoryMetrics` in `is-report`
 
