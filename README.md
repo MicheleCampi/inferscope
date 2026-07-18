@@ -56,6 +56,12 @@ For each request sent to an engine, inferscope captures:
   (`nvmlDeviceGetTotalEnergyConsumption`) with a trapezoidal
   power-integration fallback, plus derived tokens-per-joule and
   tokens-per-watt.
+- **Per-step trajectory attribution** *(with `--steps-file`)* —
+  energy, token, and KV-cache deltas sliced per agentic step (LLM
+  calls and tool executions), joined offline against driver-emitted
+  step boundaries, with an unattributed remainder that reconciles
+  exactly to the whole-run figure. Valid at controlled concurrency
+  only (one trajectory in flight).
 
 The output is a structured report (text and JSON) that aggregates
 these across a run.
@@ -121,6 +127,16 @@ making the inter-token cadence directly readable. The standard
 `OTEL_EXPORTER_OTLP_ENDPOINT` env var is honoured if the flag is
 not supplied. Design recorded in
 [ADR-008](docs/adr/008-opentelemetry-export.md).
+
+For agentic workloads, `--steps-file trajectory.jsonl` joins
+driver-emitted step boundaries (JSONL: `step_id`, `kind` of
+`llm_call` | `tool`, wall-clock start/end in unix nanoseconds)
+against the run's timelines after the run — the two processes never
+communicate. The JSON report then carries a `trajectory` section
+with per-step energy and token figures, dropped-step diagnostics,
+and the unattributed remainder. Works in both probe and
+`--sample-only` mode. Design recorded in
+[ADR-013](docs/adr/013-trajectory-level-attribution.md).
 
 ## Scope
 
