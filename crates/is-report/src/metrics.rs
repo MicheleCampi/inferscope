@@ -329,6 +329,13 @@ pub struct Report {
     /// delta.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub phase_energy: Option<PhaseEnergyMetrics>,
+    /// Wall-clock UTC unix-epoch nanoseconds of the ADR-003 reference
+    /// instant, captured at run start (ADR-013). Maps the relative
+    /// `elapsed_ns` timeline onto absolute time, enabling the offline
+    /// join with driver-side step boundaries. `None` on reports
+    /// produced before ADR-013.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub reference_instant_unix_ns: Option<u64>,
 }
 
 #[cfg(test)]
@@ -336,8 +343,30 @@ mod tests {
     use super::*;
     use is_core::{ResourceSample, ResourceTimeline, TokenArrival};
 
+    #[test]
+    fn anchor_absent_is_skipped_and_defaults_to_none() {
+        let report = sample_report();
+        let json = serde_json::to_string(&report).unwrap();
+        assert!(!json.contains("reference_instant_unix_ns"));
+        let back: Report = serde_json::from_str(&json).unwrap();
+        assert_eq!(back.reference_instant_unix_ns, None);
+    }
+
+    #[test]
+    fn anchor_roundtrips_when_present() {
+        let mut report = sample_report();
+        report.reference_instant_unix_ns = Some(1_752_000_000_000_000_000);
+        let json = serde_json::to_string(&report).unwrap();
+        let back: Report = serde_json::from_str(&json).unwrap();
+        assert_eq!(
+            back.reference_instant_unix_ns,
+            Some(1_752_000_000_000_000_000)
+        );
+    }
+
     fn sample_report() -> Report {
         Report {
+            reference_instant_unix_ns: None,
             request_timing: RequestTiming::new(
                 vec![
                     TokenArrival::new(0, 412_000_000),
@@ -410,6 +439,7 @@ mod tests {
     #[test]
     fn report_with_no_resource_timeline_round_trips() {
         let original = Report {
+            reference_instant_unix_ns: None,
             request_timing: RequestTiming::new(vec![], 0),
             resource_timeline: None,
             gpu_timeline: None,

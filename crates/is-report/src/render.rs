@@ -294,6 +294,7 @@ mod tests {
 
     fn sample_report() -> Report {
         Report {
+            reference_instant_unix_ns: None,
             request_timing: RequestTiming::new(
                 vec![
                     TokenArrival::new(0, 412_000_000),
@@ -415,6 +416,7 @@ mod tests {
     #[test]
     fn text_render_handles_an_empty_request() {
         let r = Report {
+            reference_instant_unix_ns: None,
             request_timing: RequestTiming::new(vec![], 0),
             resource_timeline: None,
             gpu_timeline: None,

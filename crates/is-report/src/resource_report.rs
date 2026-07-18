@@ -23,6 +23,13 @@ use crate::metrics::{GpuMetrics, PhaseEnergyMetrics, ResourceMetrics};
 /// A standalone resource-sampling report (no timing, no probe).
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct ResourceReport {
+    /// Wall-clock UTC unix-epoch nanoseconds of the ADR-003 reference
+    /// instant, captured at run start (ADR-013). Maps the relative
+    /// `elapsed_ns` timeline onto absolute time, enabling the offline
+    /// join with driver-side step boundaries. `None` on reports
+    /// produced before ADR-013.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub reference_instant_unix_ns: Option<u64>,
     /// PID that was monitored.
     pub pid: u32,
     /// Whether direct children were aggregated into the PID's metrics.
@@ -62,6 +69,7 @@ mod tests {
     #[test]
     fn resource_report_with_phase_energy_survives_json_round_trip() {
         let report = ResourceReport {
+            reference_instant_unix_ns: None,
             pid: 4242,
             include_descendants: false,
             sample_period_ms: 100,
@@ -89,6 +97,7 @@ mod tests {
     #[test]
     fn resource_report_without_phase_fields_omits_them_in_json() {
         let report = ResourceReport {
+            reference_instant_unix_ns: None,
             pid: 1,
             include_descendants: false,
             sample_period_ms: 100,

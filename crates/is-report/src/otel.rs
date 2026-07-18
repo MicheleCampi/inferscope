@@ -112,13 +112,20 @@ pub fn export_to_otel(report: &Report, endpoint: &str) -> Result<(), OtelExportE
 
     // Compute timestamps before opening the span so the recorded
     // start matches the run's actual wall-clock start as closely as
-    // possible. We do not have the original run start time on a
-    // Report (it is a pure data type), so we anchor on SystemTime::now()
-    // minus total_latency_ns. The event offsets remain accurate
-    // relative to that anchor.
-    let now = SystemTime::now();
-    let run_duration = Duration::from_nanos(report.timing.total_latency_ns);
-    let run_start = now.checked_sub(run_duration).unwrap_or(now);
+    // possible. When the report carries the ADR-013 anchor, the span
+    // is placed at the run's true wall-clock start. On pre-ADR-013
+    // reports (anchor absent) we fall back to the historical
+    // behaviour: SystemTime::now() minus total_latency_ns, which
+    // places spans at export time rather than run time. The event
+    // offsets remain accurate relative to either anchor.
+    let run_start = match report.reference_instant_unix_ns {
+        Some(ns) => SystemTime::UNIX_EPOCH + Duration::from_nanos(ns),
+        None => {
+            let now = SystemTime::now();
+            let run_duration = Duration::from_nanos(report.timing.total_latency_ns);
+            now.checked_sub(run_duration).unwrap_or(now)
+        }
+    };
 
     // Open the root span with the synthesised start time, then attach
     // attributes and events, then end with the matching end time.

@@ -65,6 +65,15 @@ async fn orchestrate(args: Args) -> Result<(), String> {
     // Captured before any task starts so all three produce
     // elapsed_ns from the same origin.
     let start = Instant::now();
+    // Wall-clock anchor for the ADR-003 reference instant (ADR-013):
+    // read once, here, in the same statement sequence as the monotonic
+    // reference. One wall-clock read means NTP adjustments during the
+    // run cannot bend the timeline; the anchoring error is a per-run
+    // constant on the order of microseconds.
+    let reference_instant_unix_ns: Option<u64> = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .ok()
+        .and_then(|d| u64::try_from(d.as_nanos()).ok());
 
     // Validate the PID early: if the user passed --pid pointing
     // to a process that does not exist, fail before doing any
@@ -83,7 +92,7 @@ async fn orchestrate(args: Args) -> Result<(), String> {
     // Sample-only mode returns here: no probe, just resource sampling
     // for a fixed duration while an external load generator drives traffic.
     if args.sample_only {
-        return run_sample_only(&args, start).await;
+        return run_sample_only(&args, start, reference_instant_unix_ns).await;
     }
 
     // In the normal (non sample-only) path, clap guarantees endpoint,
@@ -308,6 +317,7 @@ async fn orchestrate(args: Args) -> Result<(), String> {
         kvcache,
         phase_timeline,
         phase_energy,
+        reference_instant_unix_ns,
     };
 
     if args.json {
@@ -337,7 +347,11 @@ async fn orchestrate(args: Args) -> Result<(), String> {
 /// Cancellation is driven by a timer of `duration_secs` rather than
 /// by probe completion (there is no probe here). Emits a
 /// resource-only report. See ADR-009.
-async fn run_sample_only(args: &Args, start: Instant) -> Result<(), String> {
+async fn run_sample_only(
+    args: &Args,
+    start: Instant,
+    reference_instant_unix_ns: Option<u64>,
+) -> Result<(), String> {
     let pid = args
         .pid
         .ok_or_else(|| "--sample-only requires --pid".to_string())?;
@@ -444,6 +458,7 @@ async fn run_sample_only(args: &Args, start: Instant) -> Result<(), String> {
         derive_phase_energy(tl, mj, source)
     });
     let report = ResourceReport {
+        reference_instant_unix_ns,
         pid,
         include_descendants: args.include_descendants,
         sample_period_ms: args.sample_period_ms,
