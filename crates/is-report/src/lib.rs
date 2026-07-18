@@ -17,6 +17,8 @@
 //! - [`derive`]: the functions that compute metrics from the raw
 //!   signals.
 //! - [`render`]: text and JSON rendering of a report.
+//! - [`trajectory`]: driver-side step ingestion for agentic
+//!   trajectories. See ADR-013.
 //! - [`otel`] (feature `otel-export`): OpenTelemetry export of the
 //!   derived metrics as OTLP/HTTP spans. See ADR-008.
 
@@ -25,6 +27,7 @@ pub mod error;
 pub mod metrics;
 pub mod render;
 pub mod resource_report;
+pub mod trajectory;
 
 #[cfg(feature = "otel-export")]
 pub mod otel;
@@ -40,6 +43,7 @@ pub use metrics::{
 };
 pub use render::{render_json, render_text};
 pub use resource_report::{render_resource_json, ResourceReport};
+pub use trajectory::{parse_steps, StepFileError, StepKind, StepRecord};
 
 #[cfg(feature = "otel-export")]
 pub use otel::{export_to_otel, OtelExportError};
