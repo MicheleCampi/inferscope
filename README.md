@@ -61,7 +61,9 @@ For each request sent to an engine, inferscope captures:
   calls and tool executions), joined offline against driver-emitted
   step boundaries, with an unattributed remainder that reconciles
   exactly to the whole-run figure. Valid at controlled concurrency
-  only (one trajectory in flight).
+  only (one trajectory in flight). Measured against a live vLLM
+  serving Qwen2.5-7B-Instruct on an NVIDIA A10 — see
+  [`validation-results/adr-013-a10-vllm/`](validation-results/adr-013-a10-vllm/).
 
 The output is a structured report (text and JSON) that aggregates
 these across a run.
@@ -137,6 +139,13 @@ with per-step energy and token figures, dropped-step diagnostics,
 and the unattributed remainder. Works in both probe and
 `--sample-only` mode. Design recorded in
 [ADR-013](docs/adr/013-trajectory-level-attribution.md).
+Validated 2026-07-21 on an NVIDIA A10 against vLLM in
+`--sample-only` mode: two trajectories, exact energy
+reconciliation (steps + unattributed == total), zero dropped
+steps, the second with the ADR-011 metrics scrape active
+(per-step token deltas, trajectory tokens-per-joule). Captured
+report in
+[`validation-results/adr-013-a10-vllm/`](validation-results/adr-013-a10-vllm/).
 
 ## Scope
 
