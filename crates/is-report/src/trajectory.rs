@@ -236,15 +236,18 @@ pub struct StepMetrics {
     /// integration basis as the ADR-010 fallback).
     pub energy_mj: u64,
     /// Generation-token delta over the window (phase timeline,
-    /// ADR-012). Zero when no phase timeline was scraped.
-    pub generation_tokens_delta: u64,
+    /// ADR-012). `None` when no phase timeline was scraped: an
+    /// unobserved counter is absence, not a measured zero.
+    pub generation_tokens_delta: Option<u64>,
     /// Prompt-token delta over the window (phase timeline, ADR-012).
-    pub prompt_tokens_delta: u64,
-    /// KV-cache hit delta over the window (ADR-011). Zero when no
+    /// `None` when no phase timeline was scraped.
+    pub prompt_tokens_delta: Option<u64>,
+    /// KV-cache hit delta over the window (ADR-011). `None` when no
     /// KV-cache timeline was scraped.
-    pub cache_hits_delta: u64,
-    /// KV-cache query delta over the window (ADR-011).
-    pub cache_queries_delta: u64,
+    pub cache_hits_delta: Option<u64>,
+    /// KV-cache query delta over the window (ADR-011). `None` when no
+    /// KV-cache timeline was scraped.
+    pub cache_queries_delta: Option<u64>,
     /// Generation tokens per joule over the step window. `None` for
     /// tool steps and for zero tokens or zero energy: "no tokens" is
     /// absence, not a measured zero efficiency (ADR-013).
@@ -315,11 +318,29 @@ fn area2_mw_ns(samples: &[&is_core::GpuSample], window: Option<(u64, u64)>) -> u
 /// the ADR-003 access pattern. `None` when the window contains no
 /// sample. A single-sample window yields `first == last`, so every
 /// counter delta over it is zero.
+/// Baseline and end samples for a counter delta over `[s, e]`.
+///
+/// The end is the last sample at or before `e`. The baseline is the
+/// last sample at or *before* `s` when one exists, not the first
+/// sample inside the window: a counter that jumps between `s` and the
+/// first interior sample (prompt tokens on prefill) would otherwise
+/// read as zero, and a progressive counter would under-report by the
+/// same gap. With no sample at or before `s` the first interior
+/// sample is the only available baseline and the pre-window increment
+/// is unrecoverable.
+///
+/// The cost of this choice is stated in the ADR-013 amendment: the
+/// baseline may sit up to one sample period before the window, so a
+/// delta can include activity that preceded the step. At sample
+/// periods comparable to step durations neither convention is exact;
+/// this one fails toward over-attribution, which is visible in the
+/// figures, rather than toward a systematic zero, which is not.
 fn bracket<T>(samples: &[T], elapsed: impl Fn(&T) -> u64, s: u64, e: u64) -> Option<(&T, &T)> {
     let lo = samples.partition_point(|x| elapsed(x) < s);
     let hi = samples.partition_point(|x| elapsed(x) <= e);
     if hi > lo {
-        Some((&samples[lo], &samples[hi - 1]))
+        let base = if lo > 0 { lo - 1 } else { lo };
+        Some((&samples[base], &samples[hi - 1]))
     } else {
         None
     }
@@ -457,27 +478,28 @@ pub fn derive_trajectory_from_timelines(
             let samples_in_window = (gpu.samples.partition_point(|x| x.elapsed_ns <= *end)
                 - gpu.samples.partition_point(|x| x.elapsed_ns < *start))
                 as u64;
-            let (cache_hits_delta, cache_queries_delta) = kvcache_timeline
+            let kv_deltas = kvcache_timeline
                 .and_then(|t| bracket(&t.samples, |x| x.elapsed_ns, *start, *end))
-                .map(|(f, l)| (l.hits - f.hits, l.queries - f.queries))
-                .unwrap_or((0, 0));
-            let (generation_tokens_delta, prompt_tokens_delta) = phase_timeline
+                .map(|(f, l)| (l.hits - f.hits, l.queries - f.queries));
+            let cache_hits_delta = kv_deltas.map(|(h, _)| h);
+            let cache_queries_delta = kv_deltas.map(|(_, q)| q);
+            let phase_deltas = phase_timeline
                 .and_then(|t| bracket(&t.samples, |x| x.elapsed_ns, *start, *end))
                 .map(|(f, l)| {
                     (
                         l.generation_tokens - f.generation_tokens,
                         l.prompt_tokens - f.prompt_tokens,
                     )
-                })
-                .unwrap_or((0, 0));
+                });
+            let generation_tokens_delta = phase_deltas.map(|(g, _)| g);
+            let prompt_tokens_delta = phase_deltas.map(|(_, p)| p);
             let tokens_per_joule = match (rec.kind, generation_tokens_delta, energy_mj) {
-                (StepKind::Tool, _, _) | (_, 0, _) | (_, _, 0) => None,
-                (StepKind::LlmCall, tokens, mj) => Some(tokens as f64 / (mj as f64 / 1000.0)),
+                (StepKind::Tool, _, _) | (_, None, _) | (_, Some(0), _) | (_, _, 0) => None,
+                (StepKind::LlmCall, Some(tokens), mj) => Some(tokens as f64 / (mj as f64 / 1000.0)),
             };
-            let cache_hit_rate = if cache_queries_delta == 0 {
-                None
-            } else {
-                Some(cache_hits_delta as f64 / cache_queries_delta as f64)
+            let cache_hit_rate = match (cache_hits_delta, cache_queries_delta) {
+                (Some(h), Some(q)) if q > 0 => Some(h as f64 / q as f64),
+                _ => None,
             };
             StepMetrics {
                 step_id: rec.step_id,
@@ -644,11 +666,11 @@ mod derive_tests {
         let s1 = &t.steps[0];
         assert_eq!(s1.energy_mj, 150_000);
         assert_eq!(s1.samples_in_window, 4); // 2 ticks x 2 devices
-        assert_eq!(s1.cache_hits_delta, 10);
-        assert_eq!(s1.cache_queries_delta, 20);
+        assert_eq!(s1.cache_hits_delta, Some(10));
+        assert_eq!(s1.cache_queries_delta, Some(20));
         assert_eq!(s1.cache_hit_rate, Some(0.5));
-        assert_eq!(s1.generation_tokens_delta, 100);
-        assert_eq!(s1.prompt_tokens_delta, 50);
+        assert_eq!(s1.generation_tokens_delta, Some(100));
+        assert_eq!(s1.prompt_tokens_delta, Some(50));
         // 100 tokens / 150 J
         let tpj = s1.tokens_per_joule.expect("llm step with tokens");
         assert!((tpj - 100.0 / 150.0).abs() < 1e-12);
@@ -712,8 +734,10 @@ mod derive_tests {
         let s1 = &t.steps[0];
         assert_eq!(s1.samples_in_window, 2);
         assert_eq!(s1.energy_mj, 0);
-        assert_eq!(s1.cache_hits_delta, 0);
-        assert_eq!(s1.generation_tokens_delta, 0);
+        // Baseline is t=0, end is t=1s: the window now carries the
+        // tick's real increment instead of a false zero.
+        assert_eq!(s1.cache_hits_delta, Some(10));
+        assert_eq!(s1.generation_tokens_delta, Some(100));
         assert_eq!(s1.tokens_per_joule, None); // zero energy is absence
     }
 
@@ -811,16 +835,39 @@ mod derive_tests {
         );
     }
 
+    /// A window that opens between two samples must count the
+    /// increment that happened before its first interior sample.
+    /// Baseline is the last sample at or before the window start, not
+    /// the first sample inside it: counters that jump at the start of
+    /// a step (prompt tokens on prefill) otherwise read as zero, and
+    /// progressive counters under-report. Reproduces the A10 vLLM
+    /// evidence where per-step prompt deltas were 0 while the
+    /// timeline showed the prefill jumps.
     #[test]
-    fn missing_kv_and_phase_timelines_yield_zero_deltas_not_withholding() {
+    fn window_opening_between_samples_counts_the_pre_window_increment() {
+        let report = synthetic_report();
+        // Window 1.5s -> 3.0s. Interior samples: t=2s, t=3s.
+        // Baseline must be t=1s (gen=100, prompt=50, hits=10, q=20);
+        // last interior t=3s (gen=300, prompt=150, hits=30, q=60).
+        let steps = vec![step(1, StepKind::LlmCall, 3 * S / 2, 3 * S)];
+        let t = derive_trajectory(&report, &steps).expect("valid inputs derive");
+        let s1 = &t.steps[0];
+        assert_eq!(s1.generation_tokens_delta, Some(200));
+        assert_eq!(s1.prompt_tokens_delta, Some(100));
+        assert_eq!(s1.cache_hits_delta, Some(20));
+        assert_eq!(s1.cache_queries_delta, Some(40));
+    }
+
+    #[test]
+    fn missing_kv_and_phase_timelines_yield_absent_deltas_not_withholding() {
         let mut report = synthetic_report();
         report.kvcache_timeline = None;
         report.phase_timeline = None;
         let steps = vec![step(1, StepKind::LlmCall, 0, S)];
         let t = derive_trajectory(&report, &steps).expect("derives on GPU alone");
-        assert_eq!(t.steps[0].cache_hits_delta, 0);
+        assert_eq!(t.steps[0].cache_hits_delta, None);
         assert_eq!(t.steps[0].cache_hit_rate, None);
-        assert_eq!(t.steps[0].generation_tokens_delta, 0);
+        assert_eq!(t.steps[0].generation_tokens_delta, None);
         assert_eq!(t.steps[0].tokens_per_joule, None);
         assert_eq!(t.total_generation_tokens, 0);
         assert_eq!(t.trajectory_tokens_per_joule, None);
