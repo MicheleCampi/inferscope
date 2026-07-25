@@ -85,3 +85,43 @@ _compute_slot_mapping_kernel. This causes a latency spike`.
 Operationally: the first request after any engine start pays a JIT
 compilation cost. A benchmark that sends a throwaway request first will never
 see it — which is exactly what happened to the run labelled COLD here.
+
+**Engine init time, 27.10 s vs 95.66 s — localised, not root-caused.** The two
+starts report `init engine (profile, create kv cache, warmup model) took
+27.10 s (compilation: 15.93 s)` and `95.66 s (compilation: 16.62 s)`. Same
+model, same flags, same host. Decomposing from log timestamps:
+
+| phase | cold 05-23 | restart 05-24 |
+|---|---|---|
+| start → end of warmup (compile) | ~16 s | ~17 s |
+| end of warmup → CUDA graph memory profiling | **7 s** | **75 s** |
+| graph profiling → capture done | 4 s | 4 s |
+
+Both totals reconcile with the logged figures. The entire difference sits in
+one silent window between `monitor.py:81` and `gpu_model_runner.py:6063` —
+log lines 36–38 are consecutive in both files, nothing is emitted in between.
+
+Ruled out against v0.21.0 source: it is not compilation (`torch.compile`
+15.93 vs 16.62 s, and `monitor_profiling_run` asserts no backend compilation
+occurs during the profiling run), and not the profiling forward pass itself
+(0.42 vs 0.41 s — that context manager times exactly that pass).
+
+What the window does contain, per `gpu_worker.determine_available_memory`:
+the tail of `profile_run()` including `_cleanup_profiling_kv_cache()`
+(`torch.accelerator.synchronize()` → `gc.collect()` → `empty_cache()`), a
+`memory_stats` read, then `profile_cudagraph_memory()` →
+`_init_minimal_kv_cache_for_profiling()`. All GPU memory release and
+allocation, no compilation.
+
+Which of those absorbs the 68 s is **not determinable from these logs**.
+Neither call is instrumented; `MemoryProfilingResult.__repr__` carries a
+`Memory profiling takes N seconds` string but it is a repr, never logged in
+these runs. Context worth recording without asserting causation: the slow
+start followed a RunPod pod resume from pause.
+
+Not load-bearing for any published claim — the article covers request-path
+latency, and this is init. Recorded because it touches the cold-start work
+(vllm-coldstart-probe measured ~18 s cold start) where a 3.5× swing in init
+time at fixed configuration would matter to placement assumptions. Measuring
+it would need a GPU session with a timer around both calls, and a way to
+reproduce the resume.
