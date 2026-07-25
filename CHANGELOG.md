@@ -7,6 +7,75 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+_Nothing yet._
+
+## [0.4.0] — 2026-07-25
+
+The OpenTelemetry export and sample-only mode that sat unreleased since
+May ship here, together with the energy, KV-cache, per-phase and
+per-trajectory work below. v0.3.0 tagged the per-device GPU metrics and
+nothing more: none of the energy or attribution features the README
+describes were in that tag, which is why this release exists.
+
+### Added
+
+- **Energy and efficiency metrics (ADR-010).** Total energy from the NVML
+  hardware energy counter (`nvmlDeviceGetTotalEnergyConsumption`), with a
+  trapezoidal integral of sampled power as an explicitly second-best
+  fallback, flagged as such via `energy_source`. Derived
+  `energy_per_token_mj`, `tokens_per_joule`, `tokens_per_watt`. Validated
+  end-to-end on an A10 against llama.cpp — evidence in
+  `validation-results/adr-010-a10-energy-counter.json`.
+- **KV-cache hit rate from a Prometheus vLLM-schema endpoint (ADR-011),**
+  in a new `is-metrics` crate — a third category of metric source next to
+  host-side `/proc` sampling and the load-driving probe: read-only scraping
+  of engine-internal counters across a network boundary. Hand-written
+  parser with prefix guards over `vllm:prefix_cache_hits` /
+  `vllm:prefix_cache_queries`, counter-reset handling, fixed scrape
+  timeout. Fixture from `llm-d-inference-sim` v0.8.2 committed.
+- **Per-phase energy attribution, prefill vs decode (ADR-012).** Two
+  apportionments of the same energy — time-share and token-share — with
+  their divergence exposed as the first-class signal rather than a single
+  number restating its own premise.
+- **Per-trajectory, per-step attribution for agentic workloads (ADR-013).**
+  `--steps-file` ingests driver-emitted step boundaries (JSONL: `step_id`,
+  `kind`, wall-clock start/end); `is-report` joins them offline against the
+  sampled timelines. Per-step energy from segment-exact integration, per-step
+  counter deltas, and an unattributed remainder that reconciles exactly to
+  the whole-run figure. inferscope stays a passive observer: the driver and
+  the profiler never communicate during the run.
+- **Wall-clock anchor** (`reference_instant_unix_ns`) on `Report` and
+  `ResourceReport`, without which no offline join is possible.
+- **`validation-results/`** — captured hardware evidence with provenance
+  (driver, versions, topology, server logs), indexed by a README that states
+  what each run does *and does not* establish.
+
+### Changed
+
+- **BREAKING (JSON schema): the four counter deltas on `StepMetrics` are
+  `Option<u64>`,** not `u64`. An absent timeline used to serialise as `0`,
+  indistinguishable from a measured zero; it now reads `null`.
+- **BREAKING (figures): per-step counter deltas take the baseline from the
+  last sample at or before the window start,** not the first sample inside
+  it. The old convention silently dropped any counter movement between the
+  window start and its first interior sample — a systematic zero for
+  counters that jump at step start (prompt tokens on prefill), and
+  under-reporting for progressive counters. Found by auditing the A10
+  evidence against the code that produced it; per-step figures in reports
+  generated before this release are affected.
+- `reqwest` moved from `native-tls` to `rustls-tls`.
+
+### Documentation
+
+- ADR-010 through ADR-013 added and indexed.
+- ADR-013 amended: the delta-baseline semantics, the over-attribution cost
+  of the correction, and absence-is-not-zero in the schema.
+- ADR-012 and ADR-013 validation headers restated against what the
+  hardware runs actually establish, including what remains unvalidated.
+
+### Previously under Unreleased
+
+
 ### Added
 
 - **Sample-only mode (`--sample-only`).** Attaches to an already-running process via `--pid` and samples its CPU/RSS (and per-device GPU usage when built with `gpu-nvidia` and `--gpu`) for a fixed `--duration-secs`, WITHOUT issuing any inference request. Intended for profiling a server while an external load generator (e.g. AIPerf) drives the traffic — the case the active probe cannot serve without perturbing the measurement. Emits a dedicated resource-only JSON report (`ResourceReport`), not a degraded `Report`. In this mode `--endpoint`, `--model`, and `--prompt` are not required. Design recorded in ADR-009.

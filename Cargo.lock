@@ -707,7 +707,7 @@ dependencies = [
 
 [[package]]
 name = "inferscope"
-version = "0.3.0"
+version = "0.4.0"
 dependencies = [
  "clap",
  "is-core",
@@ -728,7 +728,7 @@ checksum = "d98f6fed1fde3f8c21bc40a1abb88dd75e67924f9cffc3ef95607bad8017f8e2"
 
 [[package]]
 name = "is-core"
-version = "0.3.0"
+version = "0.4.0"
 dependencies = [
  "serde",
  "serde_json",
@@ -737,7 +737,7 @@ dependencies = [
 
 [[package]]
 name = "is-metrics"
-version = "0.3.0"
+version = "0.4.0"
 dependencies = [
  "is-core",
  "reqwest",
@@ -750,7 +750,7 @@ dependencies = [
 
 [[package]]
 name = "is-probe"
-version = "0.3.0"
+version = "0.4.0"
 dependencies = [
  "is-core",
  "reqwest",
@@ -763,7 +763,7 @@ dependencies = [
 
 [[package]]
 name = "is-report"
-version = "0.3.0"
+version = "0.4.0"
 dependencies = [
  "is-core",
  "libc",
@@ -778,7 +778,7 @@ dependencies = [
 
 [[package]]
 name = "is-sysmon"
-version = "0.3.0"
+version = "0.4.0"
 dependencies = [
  "is-core",
  "nvml-wrapper",

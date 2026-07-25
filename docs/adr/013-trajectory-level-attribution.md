@@ -1,7 +1,7 @@
 # ADR-013: Trajectory-Level Energy and Cache Attribution for Agentic Workloads
 
 - **Status**: Accepted
-- **Validation**: design-only; VM fixture + join logic first, real-energy pass on GPU after 2026-08-11
+- **Validation**: measured on GPU 2026-07-21 (1x A10, vLLM, Qwen2.5-7B-Instruct) — per-step energy with exact reconciliation, evidence in `validation-results/adr-013-a10-vllm/`. That evidence also exposed the delta-baseline flaw corrected below; per-step counter figures predate the correction and are recomputed by the current code. KV-cache per-step deltas remain unvalidated on real hardware: no KV timeline was scraped in that run.
 - **Date**: 2026-07-17
 - **Deciders**: Michele Campi
 
@@ -129,9 +129,15 @@ the exact access pattern ADR-003 already names for sample lookup. The
 sliced series are the ones the house already produces per tick: GPU power
 samples (ADR-010), KV-cache counters (ADR-011), phase counters (ADR-012).
 For the counter series, per-step figures come out as window deltas between
-the samples bracketing the step boundaries, the same first-sample/last-sample
-delta semantics ADR-011 and ADR-012 use for the whole run — applied to a
-narrower window. Nothing about the sampling side changes: same tick, same
+the samples bracketing the step boundaries. The whole-run semantics of
+ADR-011 and ADR-012 — first sample to last sample — does not carry over
+unchanged to an interior window, and saying it did was the flaw corrected
+below: on the whole run the first sample *is* the start, but a step window
+opens between two samples, and taking the first interior sample as baseline
+discards whatever the counter did between the window start and that sample.
+The baseline is therefore the last sample at or before the window start,
+falling back to the first interior sample only when the window opens before
+any sample exists. Nothing about the sampling side changes: same tick, same
 samplers, same raw types. The step cut exists purely in `is-report`.
 
 One consequence is worth naming: step boundaries fall between samples, so
@@ -158,6 +164,27 @@ integration-based even when the ADR-010 headline figure is counter-grade;
 the two are separate figures on declared bases, and mixing them would make
 the reconciliation inexact by construction — the report keeps them apart
 rather than reconciling across bases.
+
+The baseline correction has a cost, stated rather than hidden: the baseline
+sample may sit up to one sample period before the window opens, so a step
+delta can include counter activity that preceded the step. At sample periods
+comparable to step durations neither convention is exact. The choice is
+between an error that is visible in the figures (a delta slightly too large,
+bounded by one sample period of engine activity) and one that is not (a
+systematic zero indistinguishable from a step that genuinely did nothing).
+Over-attribution is the recoverable failure; it is preferred. Steps shorter
+than the sample period still resolve no counter delta at all and report
+absence — `samples_in_window` is carried per step so a reader can tell which
+case they are looking at.
+
+Absence and zero are distinct in the schema. The counter deltas on
+`StepMetrics` are `Option`: `None` when the corresponding timeline was never
+scraped, `Some(0)` when it was scraped and the counter did not move. Writing
+an unobserved counter as `0` makes an absent measurement indistinguishable
+from a measured idle step for any consumer of the JSON, which is the same
+failure mode ADR-0007 phase A removed from the operator's placement signals
+and the same discipline `tokens_per_joule` and `cache_hit_rate` already
+followed here.
 
 ### Derived layer: `TrajectoryMetrics` in `is-report`
 

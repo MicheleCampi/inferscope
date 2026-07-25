@@ -19,6 +19,41 @@ This closes the only non-cold-path part of ADR-010: prior validation covered
 the counter in isolation (Phase 0, A10) and unit-level delta/derivation logic;
 this run exercises the full pipeline with real NVML + real token accounting.
 
+## adr-013-a10-vllm/
+
+Per-step trajectory attribution (ADR-013) against a live vLLM serving
+Qwen2.5-7B-Instruct on an NVIDIA A10, 150 s sampling window, one trajectory
+in flight. `gpu-*.jsonl` is the driver-emitted step boundary file; the
+`report-*.txt` is the JSON report (5 steps: 2 `llm_call`, 3 `tool`).
+
+Confirms:
+- `trajectory` section present, per-step energy populated from the
+  integration basis
+- reconciliation exact: 716644 + 57308 + 7977039 mJ = 8750991 mJ =
+  `total_energy_mj`, `dropped_steps` empty
+- `phase_energy` populated on live counters (ADR-012 mechanism), both
+  apportionments and their divergence
+
+Bounds on this evidence, and they matter:
+- **The per-step counter figures predate a fix and are wrong as recorded.**
+  The delta baseline was the first sample inside each step window, so the
+  prefill jumps visible in the timeline (+6223 at t=4.009 s, +6363 at
+  t=7.010 s) fell outside every per-step delta: prompt tokens read 0 on all
+  five steps, generation tokens summed to 151 against 168 over the same
+  window. Corrected in `bracket()` (baseline is now the last sample at or
+  before the window start). Recomputed on this same file: prompt deltas
+  6223 + 6363 = 12586, exactly the whole-window `phase_energy` figure;
+  generation 165 vs 168, the 3 remaining falling outside every step window.
+  The report is kept as captured rather than regenerated — it is the
+  artifact that exposed the defect.
+- **KV-cache per-step attribution is not validated here.** No KV timeline
+  was scraped in this run. The recorded `cache_hits_delta: 0` /
+  `cache_queries_delta: 0` are absence written as zero, the second defect
+  the audit found; those fields are `Option` now and would read `null`.
+- Tool steps (0.2 s) are shorter than the 1 s counter sampling period and
+  resolve no counter delta at all; `samples_in_window` is carried per step
+  so a reader can tell which case applies.
+
 ## multigpu-a40-2026-05-23/
 
 Multi-device NVML sampling validated on 4× NVIDIA A40 (RunPod, driver

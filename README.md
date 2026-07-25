@@ -19,7 +19,7 @@ llama.cpp's server, mistral.rs, vLLM, Ollama, TGI — is a target.
 
 ## Status
 
-**v0.3.0 released.** The profiling stack is stable across CPU and
+**v0.4.0 released.** The profiling stack is stable across CPU and
 NVIDIA GPU. GPU support is NVIDIA-only today; all GPU and energy
 features are gated behind the `gpu-nvidia` feature flag.
 
@@ -27,12 +27,20 @@ features are gated behind the `gpu-nvidia` feature flag.
   process resource sampling, derived metrics, text/JSON reporting.
 - **NVIDIA GPU sampling** (v0.2): per-device utilization, memory,
   and power via NVML.
-- **Energy & efficiency** (v0.3): total energy from the NVML
+- **Energy & efficiency** (v0.4): total energy from the NVML
   hardware energy counter, with derived tokens-per-joule and
   tokens-per-watt. Validated end-to-end against a real llama.cpp
   workload on an NVIDIA A10 — see
   [`validation-results/`](validation-results/) for the captured
   evidence.
+- **Attribution** (v0.4): KV-cache hit rate scraped from a
+  Prometheus vLLM-schema endpoint (ADR-011), per-phase energy split
+  prefill vs decode with the divergence between two apportionments
+  as the signal (ADR-012), and per-step attribution across agentic
+  trajectories (ADR-013). Per-step energy is measured on an A10
+  against vLLM; per-step KV-cache figures are fixture-only so far.
+  [`validation-results/`](validation-results/) states the bounds of
+  each run.
 
 ## What it measures
 
@@ -61,9 +69,13 @@ For each request sent to an engine, inferscope captures:
   calls and tool executions), joined offline against driver-emitted
   step boundaries, with an unattributed remainder that reconciles
   exactly to the whole-run figure. Valid at controlled concurrency
-  only (one trajectory in flight). Measured against a live vLLM
-  serving Qwen2.5-7B-Instruct on an NVIDIA A10 — see
-  [`validation-results/adr-013-a10-vllm/`](validation-results/adr-013-a10-vllm/).
+  only (one trajectory in flight), and only for steps longer than the
+  counter sampling period — shorter steps report absence rather than a
+  zero. Per-step **energy** is measured against a live vLLM serving
+  Qwen2.5-7B-Instruct on an NVIDIA A10; per-step **KV-cache** figures
+  are exercised on fixtures only, not yet on real hardware. See
+  [`validation-results/adr-013-a10-vllm/`](validation-results/adr-013-a10-vllm/),
+  which states what that run does and does not establish.
 
 The output is a structured report (text and JSON) that aggregates
 these across a run.
@@ -140,12 +152,14 @@ and the unattributed remainder. Works in both probe and
 `--sample-only` mode. Design recorded in
 [ADR-013](docs/adr/013-trajectory-level-attribution.md).
 Validated 2026-07-21 on an NVIDIA A10 against vLLM in
-`--sample-only` mode: two trajectories, exact energy
-reconciliation (steps + unattributed == total), zero dropped
-steps, the second with the ADR-011 metrics scrape active
-(per-step token deltas, trajectory tokens-per-joule). Captured
-report in
-[`validation-results/adr-013-a10-vllm/`](validation-results/adr-013-a10-vllm/).
+`--sample-only` mode: exact energy reconciliation
+(steps + unattributed == total), zero dropped steps, per-step
+token deltas from the phase-counter scrape. That run also
+exposed a delta-baseline defect in the join, since fixed; the
+captured report is kept unregenerated as the artifact that
+exposed it, and
+[`validation-results/adr-013-a10-vllm/`](validation-results/adr-013-a10-vllm/)
+records both the numbers and their bounds.
 
 ## Scope
 
