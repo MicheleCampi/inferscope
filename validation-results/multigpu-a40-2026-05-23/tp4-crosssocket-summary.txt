@@ -1,0 +1,19 @@
+=== TP=4 cross-socket ===
+
+Timing:
+  TTFT: 61.93 ms
+  tokens/s: 105.77
+  inter-token p50: 9.39 ms
+  inter-token p95: 10.56 ms
+  inter-token p99: 13.14 ms
+
+Resource (aggregated):
+  RSS peak: 948.70 MiB
+  Threads peak: 104
+  CPU mean: 97.68%
+
+Per-device:
+  GPU 0: VRAM 1.61GB | SM mean 19.2% | power mean 138.9W | temp max 51°C
+  GPU 1: VRAM 1.41GB | SM mean 16.4% | power mean 130.9W | temp max 50°C
+  GPU 2: VRAM 1.41GB | SM mean 16.6% | power mean 129.8W | temp max 46°C
+  GPU 3: VRAM 1.92GB | SM mean 22.2% | power mean 139.4W | temp max 49°C

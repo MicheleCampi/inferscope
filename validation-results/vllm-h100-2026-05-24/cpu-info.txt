@@ -1,0 +1,13 @@
+CPU(s):                                  224
+On-line CPU(s) list:                     0-223
+Vendor ID:                               GenuineIntel
+Model name:                              Intel(R) Xeon(R) Platinum 8480+
+Thread(s) per core:                      2
+Core(s) per socket:                      56
+Socket(s):                               2
+CPU max MHz:                             3800.0000
+CPU min MHz:                             800.0000
+NUMA node0 CPU(s):                       0-55,112-167
+               total        used        free      shared  buff/cache   available
+Mem:           2.0Ti        51Gi       1.7Ti       125Mi       221Gi       1.9Ti
+Swap:             0B          0B          0B
