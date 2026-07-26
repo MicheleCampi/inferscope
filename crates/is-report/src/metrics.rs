@@ -222,13 +222,14 @@ pub struct EfficiencyMetrics {
 /// form). See [`crate::derive::derive_kvcache`].
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 pub struct KvCacheMetrics {
-    /// Cached token-blocks served over the window: the rise in
+    /// Cached tokens served over the window, block-aligned
+    /// (ADR-014): the rise in
     /// `vllm:prefix_cache_hits` from the first scrape to the last.
     pub hits_delta: u64,
-    /// Token-blocks queried over the window: the rise in
+    /// Tokens queried over the window: the rise in
     /// `vllm:prefix_cache_queries`. The denominator of the rate.
     pub queries_delta: u64,
-    /// Fraction of queried token-blocks served from cache over the
+    /// Fraction of queried tokens served from cache over the
     /// window: `hits_delta / queries_delta`, in `0.0..=1.0`.
     pub hit_rate: f64,
 }

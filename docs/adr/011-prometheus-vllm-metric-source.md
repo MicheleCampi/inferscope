@@ -1,6 +1,6 @@
 # ADR-011: Prometheus vLLM Metric Source for KV-Cache Hit Rate
 
-- **Status**: Accepted
+- **Status**: Accepted (Context corrected 2026-07-26, see ADR-014)
 - **Date**: 2026-06-25
 - **Deciders**: Michele Campi
 
@@ -16,7 +16,7 @@ is timestamped `elapsed_ns` from a reference `Instant` the probe also
 holds (ADR-003), so any sample joins a token arrival by numeric compare.
 
 These sources cannot see inside the engine. The KV-cache hit rate — the
-fraction of prefill token-blocks served from cache rather than recomputed
+fraction of prefill tokens served from cache rather than recomputed
 — is an *application-internal* quantity. It is not visible in `/proc` and
 not visible to NVML. vLLM, and the llm-d inference simulators built on its
 schema, expose it only through a Prometheus `/metrics` endpoint in the

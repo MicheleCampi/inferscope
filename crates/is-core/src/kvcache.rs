@@ -34,12 +34,16 @@ pub struct KvCacheSample {
     pub elapsed_ns: u64,
 
     /// Cumulative value of `vllm:prefix_cache_hits` at scrape time:
-    /// prefill token-blocks served from cache since the engine started.
+    /// prefill tokens served from cache since the engine started.
+    /// Counted in tokens, but truncated to a block boundary by the
+    /// engine, so it underestimates by at most one block per request
+    /// that hit (ADR-014).
     pub hits: u64,
 
     /// Cumulative value of `vllm:prefix_cache_queries` at scrape time:
-    /// prefill token-blocks looked up in the cache since the engine
-    /// started. The denominator of the hit rate.
+    /// prefill tokens looked up in the cache since the engine
+    /// started. Exact tokens, not blocks. The denominator of the
+    /// hit rate.
     pub queries: u64,
 }
 

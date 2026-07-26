@@ -212,7 +212,7 @@ pub fn derive_efficiency(
 ///   nothing to divide by.
 ///
 /// `hit_rate` is `hits_delta / queries_delta`. A well-formed window has
-/// `hits_delta <= queries_delta` (you cannot hit more blocks than you
+/// `hits_delta <= queries_delta` (you cannot hit more tokens than you
 /// queried), so the rate lands in `0.0..=1.0`; the function does not
 /// clamp, leaving any upstream anomaly visible rather than masked.
 pub fn derive_kvcache(timeline: &KvCacheTimeline) -> Option<KvCacheMetrics> {

@@ -225,7 +225,7 @@ fn render_kvcache(out: &mut String, kv: &crate::metrics::KvCacheMetrics) {
     let _ = writeln!(out, "KV-cache (prefix cache, probe window):");
     let _ = writeln!(
         out,
-        "  Hit rate           {:.1}%  ({} / {} token-blocks)",
+        "  Hit rate           {:.1}%  ({} / {} tokens)",
         kv.hit_rate * 100.0,
         kv.hits_delta,
         kv.queries_delta,
@@ -384,8 +384,12 @@ mod tests {
         assert!(text.contains("KV-cache"));
         // The rate is shown as a percentage...
         assert!(text.contains("55.1%"));
-        // ...alongside the raw deltas it derives from.
-        assert!(text.contains("86 / 156"));
+        // ...alongside the raw deltas it derives from, in tokens.
+        // The unit is asserted, not just the numbers: the counters are
+        // exact tokens on the denominator and block-aligned tokens on
+        // the numerator (ADR-014), never blocks.
+        assert!(text.contains("86 / 156 tokens"));
+        assert!(!text.contains("token-blocks"));
     }
 
     #[test]

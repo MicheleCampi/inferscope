@@ -7,7 +7,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-_Nothing yet._
+### Added
+
+- **ADR-014: multi-engine metric schema (vLLM + SGLang).** Design only, no
+  code. Establishes `EngineSchema` as a type rather than configuration —
+  the hit-rate denominator and the prefill token count are two distinct
+  series on vLLM and one and the same series on SGLang, which a name map
+  cannot express. Records what each engine actually exposes, verified at
+  source: SGLang has no per-phase timing counters, so ADR-012's time-share
+  leg is absent there and its token-share leg loses the cross-check that
+  made it falsifiable inside the tool.
+
+### Fixed
+
+- **The KV-cache hit rate was documented, and rendered, in the wrong unit.**
+  vLLM's `prefix_cache_queries` counts exact tokens
+  (`self.queries += num_tokens`), not token-blocks; `prefix_cache_hits`
+  counts tokens truncated to a block boundary. Three doc comments, one ADR
+  and the rendered text report said "token-blocks". The metric itself is
+  unchanged — `hits_delta`, `queries_delta` and `hit_rate` are unit-neutral
+  and every archived report under `validation-results/` remains valid — but
+  text reports rendered before this change print a different unit for the
+  same figure. A test now asserts the unit, not just the numbers; the
+  absence of that assertion is why the wrong unit survived a release.
 
 ## [0.4.0] — 2026-07-25
 
