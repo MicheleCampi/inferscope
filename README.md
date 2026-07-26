@@ -163,23 +163,24 @@ records both the numbers and their bounds.
 
 ## Scope
 
-v0.1.0 is built on **API-level profiling**: the engine is treated
-as a black box, observed through its HTTP API and the operating
-system. This is engine-agnostic and ships as a complete, useful
-tool.
+inferscope is built on **outside-in profiling**: the engine is
+treated as a black box, observed through its HTTP API, the
+operating system, and the GPU driver. This is engine-agnostic and
+ships as a complete tool. The one exception is the metrics scrape
+(ADR-011), which reads the engine's own Prometheus counters
+read-only across a network boundary — still no instrumentation
+inside the engine process.
+
+What that buys, and what it costs, is recorded in
+[ADR-003](docs/adr/003-sysmon-scope-and-correlation.md): host-side
+sampling attributes resources to a process tree, not to work
+inside the engine's scheduler.
 
 **Engine-internal instrumentation** — attributing time and memory
 to specific phases like KV cache management or attention
-computation — is the direction for v0.2 and beyond. The reasoning
-behind this sequencing is recorded in
+computation, from inside the engine — remains out of scope. The
+reasoning behind that boundary is recorded in
 [ADR-001](docs/adr/001-profiling-scope.md).
-
-**NVIDIA GPU resource monitoring** via NVML is the focus of v0.2,
-now in development on the [`gpu/v0.2`](https://github.com/MicheleCampi/inferscope/tree/gpu/v0.2) branch. The
-timing portion of inferscope is engine-agnostic and works against
-GPU engines today, but on the main branch the resource portion reads
-`/proc` only and so describes the CPU-side process. See
-[ADR-003](docs/adr/003-sysmon-scope-and-correlation.md).
 
 ## Architecture
 
@@ -257,21 +258,26 @@ Combine features as needed:
 | [`deploy/`](deploy/) | Example docker-compose and Kubernetes Job manifests for running inferscope as a one-shot profiling workload |
 
 ## Roadmap
-- **v0.1.0** (May 2026) — released. API-level profiling: token
-  timing, `/proc`-based resource footprint correlation, text and
-  JSON reports, CLI.
-- **v0.2** — in development on
-  [`gpu/v0.2`](https://github.com/MicheleCampi/inferscope/tree/gpu/v0.2).
-  NVIDIA GPU sampling via NVML (VRAM, SM utilisation, temperature,
-  power) behind a `gpu-nvidia` feature flag. See
-  [ADR-005](docs/adr/005-gpu-resource-sampling.md).
-- **v0.3** — AMD GPU sampling via `amd-smi`, the successor to
-  the (deprecating) `rocm-smi`. Deferred from v0.2 to wait for
-  `amd-smi` to reach a stable interface.
-- **v0.4 and beyond** — engine-internal instrumentation:
-  phase-level attribution of time and memory inside the inference
-  engine (KV cache, attention, sampling). See
-  [ADR-001](docs/adr/001-profiling-scope.md).
+
+Released — see [`CHANGELOG.md`](CHANGELOG.md) for the detail:
+
+- **v0.1.0** (May 2026) — API-level profiling: token timing,
+  `/proc` resource correlation, text and JSON reports, CLI.
+- **v0.2.x** (May 2026) — NVIDIA GPU sampling via NVML behind the
+  `gpu-nvidia` feature flag ([ADR-005](docs/adr/005-gpu-resource-sampling.md)).
+- **v0.3.0** (June 2026) — per-device GPU metrics
+  ([ADR-007](docs/adr/007-per-device-gpu-metrics.md)).
+- **v0.4.0** (July 2026) — NVML energy and efficiency (ADR-010),
+  KV-cache hit rate from a Prometheus endpoint (ADR-011),
+  per-phase energy attribution (ADR-012), per-step trajectory
+  attribution (ADR-013), plus the OTLP export and sample-only mode
+  that had shipped on main but never been tagged.
+
+Not planned: AMD GPU sampling via `amd-smi` was listed here for
+two releases and never started — it is off the roadmap rather
+than perpetually deferred. Engine-internal instrumentation stays
+out of scope by design ([ADR-001](docs/adr/001-profiling-scope.md)).
+
 ## License
 
 Licensed under the [Apache License, Version 2.0](LICENSE).
