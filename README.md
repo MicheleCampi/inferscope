@@ -251,7 +251,7 @@ Combine features as needed:
 | [`SECURITY.md`](SECURITY.md) | Threat model, controls, known limitations |
 | [`RUNBOOK.md`](RUNBOOK.md) | Eight failure modes operators commonly hit, with Detection–Diagnosis–Fix structure |
 | [`CHANGELOG.md`](CHANGELOG.md) | Version-by-version release notes |
-| [`docs/adr/`](docs/adr/) | Eight Architecture Decision Records covering profiling scope, sampling correlation, GPU resource sampling, process-tree aggregation, per-device GPU metrics, OpenTelemetry export |
+| [`docs/adr/`](docs/adr/) | Architecture Decision Records — profiling scope, sampling correlation, GPU and process-tree sampling, energy and efficiency, KV-cache hit rate, per-phase and per-trajectory attribution, multi-engine metric schema; [indexed here](docs/adr/README.md) |
 | [`docs/runbooks/runpod-gpu-validation.md`](docs/runbooks/runpod-gpu-validation.md) | End-to-end procedure for validating GPU sampling on RunPod (~$1–2/run) |
 | [`benchmarks/`](benchmarks/) | Cross-hardware comparison (L4/H100/4×A40), multi-device deep-dive, and vLLM vs llama.cpp head-to-head on H100 |
 | [`Dockerfile`](Dockerfile) | Multi-stage build, non-root user, CUDA 13.0.2 runtime |

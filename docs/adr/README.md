@@ -26,6 +26,7 @@ left intact as a historical record.
 | [ADR-011](011-prometheus-vllm-metric-source.md) | Prometheus vLLM Metric Source for KV-Cache Hit Rate | Accepted |
 | [ADR-012](012-per-phase-energy-attribution.md) | Per-Phase Energy Attribution (Prefill vs Decode) | Accepted |
 | [ADR-013](013-trajectory-level-attribution.md) | Trajectory-Level Energy and Cache Attribution for Agentic Workloads | Accepted |
+| [ADR-014](014-multi-engine-metric-schema.md) | Multi-Engine Metric Schema (vLLM + SGLang) | Accepted |
 
 ## Format
 
