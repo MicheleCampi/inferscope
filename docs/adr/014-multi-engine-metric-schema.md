@@ -78,6 +78,13 @@ re-verify against that tag):
   `num_computed_tokens` to be block-aligned. The numerator is therefore
   **quantized to block boundaries**.
 
+Source verification for this ADR was re-run against a local clone at commit
+`8a311d1c` (2026-07-27). Two facts recorded after the first draft: the label
+dictionary is built with `model_name` taken from
+`server_args.served_model_name`, so the model selection key is identical on
+both engines and does not belong in `EngineSchema`; and `cache_source`
+carries a reserved `total` value that is not part of the partition — see D4.
+
 ### The resulting asymmetry
 
 |              | vLLM                                  | SGLang (default)      |
@@ -131,9 +138,10 @@ as the same figure without the distinction visible.
 
 This is not hygiene. `is-report/src/render.rs` printed the rate as
 `({} / {} token-blocks)` until the correction carried by this ADR — already
-the wrong unit on vLLM, and one that would become engine-dependent — block-aligned tokens on vLLM, exact
-tokens on SGLang at `page_size = 1`. The rendering layer needs the provenance
-in order not to state a false unit. The JSON fields (`hits_delta`,
+the wrong unit on vLLM, and one that would become engine-dependent:
+block-aligned tokens on vLLM, exact tokens on SGLang at `page_size = 1`.
+The rendering layer needs the provenance in order not to state a false
+unit. The JSON fields (`hits_delta`,
 `queries_delta`, `hit_rate`) are unit-neutral and unchanged, so archived
 evidence under `validation-results/` remains valid; the CHANGELOG must record
 this as a label correction at unchanged metric, so that old and new rendered
@@ -156,13 +164,40 @@ The consequence is stated in full under Consequences: on SGLang the time-share
 leg of ADR-012's dual apportionment is absent, so the token-share leg loses its
 cross-check and becomes unfalsifiable within the tool.
 
-### D4 — `cached_tokens_total` is summed across `cache_source`
+### D4 — `cached_tokens_total` is summed across `cache_source`, except `total`
 
 The hit-rate numerator on SGLang is the sum of `sglang:cached_tokens_total`
-over all values of the `cache_source` label. `extract_label` already handles
-multi-label series; the schema declares the aggregation so that the parser does
-not silently pick one label value. A per-source breakdown is out of scope here
-and is not blocked by this shape.
+over the values of the `cache_source` label that partition the count — that
+is, every value except the reserved literal `total`.
+
+The unqualified form of this rule, "sum over all values of `cache_source`",
+was wrong, and the correction comes from the emitter rather than from the
+metric declaration. `metrics_collector.py` reports cached tokens through two
+mutually exclusive branches selected per request by the optional
+`cached_tokens_details` argument: the detailed branch emits `device`, `host`
+and `storage_<backend>`, which partition the count; the compatibility
+fallback emits a single `cache_source="total"` carrying the same quantity in
+aggregate. Because the series is a cumulative counter and the branch is
+chosen per request rather than per server, one scrape body can carry both
+families at once, and summing them counts the fallback requests twice.
+
+Excluding `total` is preferred over whitelisting the partition values
+because the storage label is constructed dynamically as `storage_<backend>`,
+with `unknown` as its fallback: a whitelist would silently omit tokens
+served from an unanticipated backend, understating the hit rate. `total` is
+the only reserved literal, and it appears exactly once in the emitter.
+
+A body carrying only `total` yields an empty sum. That is a detectable
+condition, not a zero: the numerator is unavailable under this rule and is
+reported as absent rather than as no cache hits.
+
+`extract_label` already handles multi-label series; the schema declares the
+aggregation so that the parser does not silently pick one label value. A
+per-source breakdown is out of scope here and is not blocked by this shape.
+
+Note that SGLang's own `benchmark/one_batch_server.py` accumulates every
+line matching the metric prefix, `total` included, and so carries the double
+count this decision avoids.
 
 ### D5 — The block-quantization bias is part of the measurement contract
 
