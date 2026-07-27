@@ -115,7 +115,10 @@ pub async fn scrape_during(
     start: Instant,
     mut cancel: oneshot::Receiver<()>,
 ) -> KvCacheTimeline {
-    let mut timeline = KvCacheTimeline::new(config.sample_period.as_nanos() as u64);
+    let mut timeline = KvCacheTimeline::new(
+        config.sample_period.as_nanos() as u64,
+        config.engine.accounting(),
+    );
 
     let client = match build_client() {
         Ok(c) => c,
@@ -246,6 +249,7 @@ pub async fn scrape_phase_during(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::config::Engine;
     use wiremock::matchers::{method, path};
     use wiremock::{Mock, MockServer, ResponseTemplate};
 
@@ -260,7 +264,11 @@ mod tests {
             .mount(&server)
             .await;
 
-        let config = MetricsConfig::new(format!("{}/metrics", server.uri()), "facebook/opt-125m");
+        let config = MetricsConfig::new(
+            format!("{}/metrics", server.uri()),
+            "facebook/opt-125m",
+            Engine::Vllm,
+        );
         let client = build_client().unwrap();
         let sample = scrape_once(&client, &config, Instant::now()).await.unwrap();
 
@@ -277,7 +285,11 @@ mod tests {
             .mount(&server)
             .await;
 
-        let config = MetricsConfig::new(format!("{}/metrics", server.uri()), "facebook/opt-125m");
+        let config = MetricsConfig::new(
+            format!("{}/metrics", server.uri()),
+            "facebook/opt-125m",
+            Engine::Vllm,
+        );
         let client = build_client().unwrap();
         let err = scrape_once(&client, &config, Instant::now())
             .await
@@ -295,7 +307,11 @@ mod tests {
             .mount(&server)
             .await;
 
-        let config = MetricsConfig::new(format!("{}/metrics", server.uri()), "facebook/opt-125m");
+        let config = MetricsConfig::new(
+            format!("{}/metrics", server.uri()),
+            "facebook/opt-125m",
+            Engine::Vllm,
+        );
         let client = build_client().unwrap();
         let err = scrape_once(&client, &config, Instant::now())
             .await
@@ -307,7 +323,7 @@ mod tests {
     #[tokio::test]
     async fn scrape_during_returns_empty_timeline_if_cancelled_immediately() {
         let (tx, rx) = oneshot::channel();
-        let config = MetricsConfig::new("http://127.0.0.1:1/metrics", "m");
+        let config = MetricsConfig::new("http://127.0.0.1:1/metrics", "m", Engine::Vllm);
         // Cancel before the first tick fires.
         tx.send(()).unwrap();
         let timeline = scrape_during(config, Instant::now(), rx).await;
@@ -326,6 +342,7 @@ mod tests {
         let config = MetricsConfig::with_period(
             format!("{}/metrics", server.uri()),
             "facebook/opt-125m",
+            Engine::Vllm,
             std::time::Duration::from_millis(20),
         );
         let (tx, rx) = oneshot::channel();
@@ -356,7 +373,11 @@ mod tests {
             .mount(&server)
             .await;
 
-        let config = MetricsConfig::new(format!("{}/metrics", server.uri()), "facebook/opt-125m");
+        let config = MetricsConfig::new(
+            format!("{}/metrics", server.uri()),
+            "facebook/opt-125m",
+            Engine::Vllm,
+        );
         let client = build_client().unwrap();
         let sample = scrape_phase_once(&client, &config, Instant::now())
             .await
@@ -377,7 +398,11 @@ mod tests {
             .mount(&server)
             .await;
 
-        let config = MetricsConfig::new(format!("{}/metrics", server.uri()), "facebook/opt-125m");
+        let config = MetricsConfig::new(
+            format!("{}/metrics", server.uri()),
+            "facebook/opt-125m",
+            Engine::Vllm,
+        );
         let client = build_client().unwrap();
         let err = scrape_phase_once(&client, &config, Instant::now())
             .await
@@ -389,7 +414,7 @@ mod tests {
     #[tokio::test]
     async fn scrape_phase_during_returns_empty_timeline_if_cancelled_immediately() {
         let (tx, rx) = oneshot::channel();
-        let config = MetricsConfig::new("http://127.0.0.1:1/metrics", "m");
+        let config = MetricsConfig::new("http://127.0.0.1:1/metrics", "m", Engine::Vllm);
         tx.send(()).unwrap();
         let timeline = scrape_phase_during(config, Instant::now(), rx).await;
         assert!(timeline.is_empty());
@@ -407,6 +432,7 @@ mod tests {
         let config = MetricsConfig::with_period(
             format!("{}/metrics", server.uri()),
             "facebook/opt-125m",
+            Engine::Vllm,
             std::time::Duration::from_millis(20),
         );
         let (tx, rx) = oneshot::channel();

@@ -598,6 +598,7 @@ mod derive_tests {
             gpu.push(gpu_sample(tick * S, 1, 50_000));
         }
         let kv = KvCacheTimeline {
+            accounting: Some(is_core::HitRateAccounting::BlockAligned),
             samples: (0..5u64)
                 .map(|t| KvCacheSample {
                     elapsed_ns: t * S,

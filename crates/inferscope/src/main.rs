@@ -14,7 +14,8 @@ use std::time::{Duration, Instant};
 use clap::Parser;
 use tokio::sync::oneshot;
 
-use is_metrics::{scrape_during, scrape_phase_during, MetricsConfig};
+use is_metrics::{scrape_during, scrape_phase_during, Engine, MetricsConfig};
+
 use is_probe::{config::ProbeConfig, runner::run as run_probe};
 use is_report::{
     derive_efficiency, derive_gpu, derive_kvcache, derive_phase_energy, derive_resource,
@@ -28,6 +29,14 @@ use is_core::GpuTimeline;
 use is_sysmon::{sample_gpu_during, GpuSampler};
 
 use crate::cli::Args;
+
+/// The engine whose metric vocabulary the scrape assumes.
+///
+/// Hardcoded pending the `--engine` flag of ADR-014 D6. The flag is
+/// withheld until `parse.rs` selects series through the schema: until
+/// then a caller declaring SGLang would be parsed with the `vllm:`
+/// vocabulary and get a plausible, wrong number rather than an error.
+const ENGINE: Engine = Engine::Vllm;
 
 fn main() -> ExitCode {
     let args = Args::parse();
@@ -164,8 +173,9 @@ async fn orchestrate(args: Args) -> Result<(), String> {
             // ways: KV hit-rate and phase energy are independent
             // first/last reductions, and keeping them separate leaves
             // the ADR-011 KV path untouched.
-            let kv_cfg = MetricsConfig::with_period(endpoint, model, args.metrics_period());
-            let phase_cfg = MetricsConfig::with_period(endpoint, model, args.metrics_period());
+            let kv_cfg = MetricsConfig::with_period(endpoint, model, ENGINE, args.metrics_period());
+            let phase_cfg =
+                MetricsConfig::with_period(endpoint, model, ENGINE, args.metrics_period());
             let (kv_cancel, kv_rx) = oneshot::channel();
             let (phase_cancel, phase_rx) = oneshot::channel();
             let kv_task = tokio::spawn(scrape_during(kv_cfg, start, kv_rx));
@@ -422,7 +432,7 @@ async fn run_sample_only(
     // same timer below (ADR-003).
     let phase_handle = match (args.metrics_endpoint.as_deref(), args.model.as_deref()) {
         (Some(endpoint), Some(model)) => {
-            let cfg = MetricsConfig::with_period(endpoint, model, args.metrics_period());
+            let cfg = MetricsConfig::with_period(endpoint, model, ENGINE, args.metrics_period());
             let (cancel_tx, cancel_rx) = oneshot::channel();
             let task = tokio::spawn(scrape_phase_during(cfg, start, cancel_rx));
             Some((task, cancel_tx))

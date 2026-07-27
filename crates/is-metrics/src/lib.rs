@@ -27,7 +27,7 @@ pub mod error;
 pub mod parse;
 pub mod scrape;
 
-pub use config::MetricsConfig;
+pub use config::{Engine, MetricsConfig};
 pub use error::MetricsError;
 pub use parse::parse_kvcache;
 pub use scrape::{scrape_during, scrape_once, scrape_phase_during, scrape_phase_once};

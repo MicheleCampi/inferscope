@@ -18,6 +18,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   leg is absent there and its token-share leg loses the cross-check that
   made it falsifiable inside the tool.
 
+- **Hit-rate accounting provenance (ADR-014 D2, D6).** `is-core` gains
+  `HitRateAccounting`, recorded on `KvCacheTimeline` at construction, and
+  `is-metrics` gains `Engine`, declared by the caller and never sniffed from
+  a scrape body. `Engine::Sglang` carries `page_size` because it decides the
+  accounting class there — exact tokens at 1, page-aligned above — while vLLM
+  is block-aligned at every block size, which changes the magnitude of the
+  quantization bias but not its class. There is no `--engine` flag yet: the
+  CLI declares vLLM as a constant, and the flag is withheld until `parse.rs`
+  selects series through the schema, so that a caller declaring SGLang cannot
+  be parsed with the `vllm:` vocabulary and handed a plausible wrong number.
+
+### Changed
+
+- **Breaking: three public constructors gained a parameter.**
+  `is_core::KvCacheTimeline::new` now takes the accounting alongside the
+  sample period, and `is_metrics::MetricsConfig::new` / `with_period` now
+  take an `Engine`. Provenance is required at construction rather than
+  optional: a timeline built by the tool always knows which engine produced
+  it. On the serialized side nothing is required — the field reads as absent
+  in reports written before this change and is preserved as absent, never
+  defaulted to a measurement that was not taken. Resolving that absence from
+  the report's schema version (ADR-014 D7) lands with the reporting change,
+  not here.
+
 ### Fixed
 
 - **The KV-cache hit rate was documented, and rendered, in the wrong unit.**

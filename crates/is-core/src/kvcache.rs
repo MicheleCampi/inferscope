@@ -17,6 +17,31 @@
 
 use serde::{Deserialize, Serialize};
 
+/// How the engine accounts the hit-rate numerator.
+///
+/// The two engines inferscope reads do not count the same thing under
+/// the same name. vLLM's `vllm:prefix_cache_hits` is truncated to a
+/// block boundary by the engine while its denominator
+/// (`vllm:prefix_cache_queries`) is exact tokens, so the rate
+/// underestimates by at most one block per request that hit. SGLang's
+/// `sglang:cached_tokens_total` is exact tokens when the server runs at
+/// `page_size = 1`, and block-aligned above it.
+///
+/// `page_size` is server configuration and is not exposed on the
+/// `/metrics` endpoint, so this cannot be derived from a scrape body:
+/// it is declared by the caller when the schema is built, never
+/// inferred (ADR-014 D2, D6).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum HitRateAccounting {
+    /// The numerator is truncated to a block or page boundary; the
+    /// rate is a lower bound on the exact-token rate.
+    BlockAligned,
+
+    /// Numerator and denominator are both exact token counts.
+    ExactTokens,
+}
+
 /// A single scrape of the prefix-cache counters at one moment in time.
 ///
 /// `hits` and `queries` are the raw cumulative counter values as read
@@ -65,14 +90,31 @@ pub struct KvCacheTimeline {
     /// The nominal scrape period the metric source was configured with,
     /// in nanoseconds.
     pub sample_period_ns: u64,
+
+    /// How the engine accounts the hit-rate numerator, declared when
+    /// the metric source was built (ADR-014 D2).
+    ///
+    /// `None` in reports written before ADR-014. Readers resolve that
+    /// case from the report's schema version rather than defaulting
+    /// here, so absence is never silently read as a measurement
+    /// (ADR-014 D7).
+    #[serde(default)]
+    pub accounting: Option<HitRateAccounting>,
 }
 
 impl KvCacheTimeline {
-    /// Creates an empty timeline with the given nominal period.
-    pub fn new(sample_period_ns: u64) -> Self {
+    /// Creates an empty timeline with the given nominal period and
+    /// hit-rate accounting.
+    ///
+    /// The accounting is required here rather than optional: a timeline
+    /// built by this crate always knows which engine produced it. The
+    /// `None` case exists only for reports deserialized from before
+    /// ADR-014.
+    pub fn new(sample_period_ns: u64, accounting: HitRateAccounting) -> Self {
         Self {
             samples: Vec::new(),
             sample_period_ns,
+            accounting: Some(accounting),
         }
     }
 
@@ -107,7 +149,7 @@ mod tests {
 
     #[test]
     fn timeline_starts_empty() {
-        let t = KvCacheTimeline::new(500_000_000);
+        let t = KvCacheTimeline::new(500_000_000, HitRateAccounting::BlockAligned);
         assert_eq!(t.len(), 0);
         assert!(t.is_empty());
         assert_eq!(t.sample_period_ns, 500_000_000);
@@ -115,7 +157,7 @@ mod tests {
 
     #[test]
     fn push_appends_samples() {
-        let mut t = KvCacheTimeline::new(500_000_000);
+        let mut t = KvCacheTimeline::new(500_000_000, HitRateAccounting::BlockAligned);
         t.push(sample(500_000_000, 10, 40));
         t.push(sample(1_000_000_000, 48, 120));
         t.push(sample(1_500_000_000, 96, 196));
@@ -137,7 +179,7 @@ mod tests {
 
     #[test]
     fn kvcache_timeline_survives_json_round_trip() {
-        let mut original = KvCacheTimeline::new(500_000_000);
+        let mut original = KvCacheTimeline::new(500_000_000, HitRateAccounting::BlockAligned);
         original.push(sample(500_000_000, 10, 40));
         original.push(sample(1_000_000_000, 48, 120));
         original.push(sample(1_500_000_000, 96, 196));
@@ -145,5 +187,30 @@ mod tests {
         let json = serde_json::to_string(&original).expect("serialize");
         let restored: KvCacheTimeline = serde_json::from_str(&json).expect("deserialize");
         assert_eq!(original, restored);
+    }
+
+    #[test]
+    fn timeline_carries_the_accounting_it_was_built_with() {
+        let t = KvCacheTimeline::new(500_000_000, HitRateAccounting::ExactTokens);
+        assert_eq!(t.accounting, Some(HitRateAccounting::ExactTokens));
+
+        let json = serde_json::to_string(&t).expect("serialize");
+        let restored: KvCacheTimeline = serde_json::from_str(&json).expect("deserialize");
+        assert_eq!(restored.accounting, Some(HitRateAccounting::ExactTokens));
+        assert!(json.contains("exact_tokens"), "json was {json}");
+    }
+
+    #[test]
+    fn a_report_written_before_adr_014_reads_as_unknown_accounting() {
+        // The shape KvCacheTimeline serialized to before the field
+        // existed. It must still parse, and the missing field must not
+        // be resolved to a value here: absence is not a measurement
+        // (ADR-014 D7).
+        let legacy = r#"{"samples":[{"elapsed_ns":1,"hits":96,"queries":196}],
+                         "sample_period_ns":500000000}"#;
+        let restored: KvCacheTimeline = serde_json::from_str(legacy).expect("deserialize");
+        assert_eq!(restored.accounting, None);
+        assert_eq!(restored.len(), 1);
+        assert_eq!(restored.samples[0].hits, 96);
     }
 }

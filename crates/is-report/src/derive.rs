@@ -1043,7 +1043,8 @@ mod tests {
     fn derive_kvcache_window_delta_and_rate() {
         // Cache warms over the window: first scrape 10/40, last 96/196.
         // hits_delta = 86, queries_delta = 156, rate = 86/156 = 0.5513.
-        let mut tl = is_core::KvCacheTimeline::new(1_000_000_000);
+        let mut tl =
+            is_core::KvCacheTimeline::new(1_000_000_000, is_core::HitRateAccounting::BlockAligned);
         tl.push(kv_sample(0, 10, 40));
         tl.push(kv_sample(1_000_000_000, 48, 120));
         tl.push(kv_sample(2_000_000_000, 96, 196));
@@ -1056,7 +1057,8 @@ mod tests {
     #[test]
     fn derive_kvcache_two_samples_minimum() {
         // Exactly two samples is a valid window.
-        let mut tl = is_core::KvCacheTimeline::new(1_000_000_000);
+        let mut tl =
+            is_core::KvCacheTimeline::new(1_000_000_000, is_core::HitRateAccounting::BlockAligned);
         tl.push(kv_sample(0, 0, 0));
         tl.push(kv_sample(1_000_000_000, 96, 196));
         let m = derive_kvcache(&tl).expect("valid window");
@@ -1067,14 +1069,16 @@ mod tests {
 
     #[test]
     fn derive_kvcache_empty_timeline_is_none() {
-        let tl = is_core::KvCacheTimeline::new(1_000_000_000);
+        let tl =
+            is_core::KvCacheTimeline::new(1_000_000_000, is_core::HitRateAccounting::BlockAligned);
         assert!(derive_kvcache(&tl).is_none());
     }
 
     #[test]
     fn derive_kvcache_single_sample_is_none() {
         // One scrape: no window to difference.
-        let mut tl = is_core::KvCacheTimeline::new(1_000_000_000);
+        let mut tl =
+            is_core::KvCacheTimeline::new(1_000_000_000, is_core::HitRateAccounting::BlockAligned);
         tl.push(kv_sample(0, 96, 196));
         assert!(derive_kvcache(&tl).is_none());
     }
@@ -1083,7 +1087,8 @@ mod tests {
     fn derive_kvcache_counter_regression_is_none() {
         // The engine reset mid-window: last reading below first.
         // A delta would be meaningless, so no metric.
-        let mut tl = is_core::KvCacheTimeline::new(1_000_000_000);
+        let mut tl =
+            is_core::KvCacheTimeline::new(1_000_000_000, is_core::HitRateAccounting::BlockAligned);
         tl.push(kv_sample(0, 96, 196));
         tl.push(kv_sample(1_000_000_000, 5, 12));
         assert!(derive_kvcache(&tl).is_none());
@@ -1092,7 +1097,8 @@ mod tests {
     #[test]
     fn derive_kvcache_zero_queries_delta_is_none() {
         // No queries occurred over the window: nothing to divide by.
-        let mut tl = is_core::KvCacheTimeline::new(1_000_000_000);
+        let mut tl =
+            is_core::KvCacheTimeline::new(1_000_000_000, is_core::HitRateAccounting::BlockAligned);
         tl.push(kv_sample(0, 50, 100));
         tl.push(kv_sample(1_000_000_000, 50, 100));
         assert!(derive_kvcache(&tl).is_none());
