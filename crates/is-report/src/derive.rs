@@ -487,12 +487,70 @@ pub fn derive_gpu(timeline: &is_core::GpuTimeline) -> Option<crate::metrics::Gpu
 /// quantifies the energy-per-token asymmetry between compute-bound
 /// prefill and memory-bound decode.
 ///
+/// The five time-share fields of [`PhaseEnergyMetrics`], derived
+/// together so they cannot be assembled apart (ADR-014 D3).
+struct TimeShareLeg {
+    prefill_ns_delta: u64,
+    decode_ns_delta: u64,
+    energy_prefill_mj: u64,
+    energy_decode_mj: u64,
+    divergence: f64,
+}
+
+/// Forms the time-share leg from a window whose samples all carry the
+/// per-phase timing family.
+///
+/// Returns `None` to withhold — a regressed counter, or a zero window
+/// delta that leaves the share undefined — and the caller propagates
+/// that to the whole struct. Withholding here is not the same as the
+/// engine having no timing family at all: that case never reaches this
+/// function, because absence of a capability must not be reported as a
+/// window that went wrong.
+fn derive_time_share(
+    first: &is_core::PhaseSample,
+    last: &is_core::PhaseSample,
+    total_mj: u64,
+    share_prefill_tok: f64,
+) -> Option<TimeShareLeg> {
+    let (first_prefill, last_prefill) = (first.prefill_ns?, last.prefill_ns?);
+    let (first_decode, last_decode) = (first.decode_ns?, last.decode_ns?);
+    if last_prefill < first_prefill || last_decode < first_decode {
+        return None;
+    }
+    let prefill_ns_delta = last_prefill - first_prefill;
+    let decode_ns_delta = last_decode - first_decode;
+
+    let time_total = prefill_ns_delta + decode_ns_delta;
+    if time_total == 0 {
+        return None;
+    }
+    let share_prefill_time = prefill_ns_delta as f64 / time_total as f64;
+
+    // Conservative split: prefill rounded from its share, decode the
+    // remainder, so the pair sums to the total exactly.
+    let energy_prefill_mj = (total_mj as f64 * share_prefill_time).round() as u64;
+    Some(TimeShareLeg {
+        prefill_ns_delta,
+        decode_ns_delta,
+        energy_prefill_mj,
+        energy_decode_mj: total_mj - energy_prefill_mj,
+        divergence: share_prefill_time - share_prefill_tok,
+    })
+}
 /// Returns `None` (the whole struct withheld, ADR-011 discipline) when:
-/// the timeline has fewer than two samples; any cumulative counter
-/// regressed within the window (engine reset); no energy figure or
-/// source was available to apportion; or either basis has a zero delta,
-/// which would make its share undefined. Because the divergence depends
-/// on both shares, a single undefined share withholds the entire struct.
+/// the timeline has fewer than two samples; a token counter regressed
+/// within the window (engine reset); no energy figure or source was
+/// available to apportion; or the token delta is zero, which would make
+/// its share undefined.
+///
+/// The time-share leg is withheld on its own terms (ADR-014 D3). An
+/// engine whose schema declares no per-phase timing family yields a
+/// token-share apportionment and five absent fields — not a withheld
+/// struct, because the token measurement was taken and is reportable.
+/// A window that carries the family but degenerates within it (a
+/// regressed phase counter, a zero time delta) withholds the whole
+/// struct as before: there the numbers exist and are untrustworthy,
+/// which is a different fact from their never having existed.
 pub fn derive_phase_energy(
     timeline: &is_core::PhaseTimeline,
     energy_millijoules: Option<u64>,
@@ -513,29 +571,15 @@ pub fn derive_phase_energy(
         return None;
     }
 
-    // Counter regression guard: every series is a monotonic cumulative
-    // counter. Any backward step means the engine reset; no trustworthy
-    // delta, withhold the whole struct.
-    if last.prefill_ns < first.prefill_ns
-        || last.decode_ns < first.decode_ns
-        || last.prompt_tokens < first.prompt_tokens
-        || last.generation_tokens < first.generation_tokens
+    // Counter regression guard for the token basis; the timing basis
+    // guards itself inside `derive_time_share`.
+    if last.prompt_tokens < first.prompt_tokens || last.generation_tokens < first.generation_tokens
     {
         return None;
     }
 
-    let prefill_ns_delta = last.prefill_ns - first.prefill_ns;
-    let decode_ns_delta = last.decode_ns - first.decode_ns;
     let prompt_tokens_delta = last.prompt_tokens - first.prompt_tokens;
     let generation_tokens_delta = last.generation_tokens - first.generation_tokens;
-
-    // Time-share basis. A zero phase-time delta makes the share
-    // undefined; withhold.
-    let time_total = prefill_ns_delta + decode_ns_delta;
-    if time_total == 0 {
-        return None;
-    }
-    let share_prefill_time = prefill_ns_delta as f64 / time_total as f64;
 
     // Token-share basis. A zero token delta makes the share undefined;
     // withhold.
@@ -545,25 +589,32 @@ pub fn derive_phase_energy(
     }
     let share_prefill_tok = prompt_tokens_delta as f64 / token_total as f64;
 
-    // Conservative split: prefill rounded from share, decode the
-    // remainder, so each pair sums to total_mj exactly.
-    let energy_prefill_by_time_mj = (total_mj as f64 * share_prefill_time).round() as u64;
-    let energy_decode_by_time_mj = total_mj - energy_prefill_by_time_mj;
     let energy_prefill_by_tokens_mj = (total_mj as f64 * share_prefill_tok).round() as u64;
     let energy_decode_by_tokens_mj = total_mj - energy_prefill_by_tokens_mj;
 
-    let phase_energy_divergence = share_prefill_time - share_prefill_tok;
+    // ADR-014 D3, the four-way distinction. A schema-declared family is
+    // present in every sample or in none; a window mixing the two means
+    // the endpoint stopped exposing a series mid-run, which is a
+    // discontinuity of the same class as a counter reset — the samples
+    // are no longer commensurable, so the whole struct is withheld.
+    let has_first = first.prefill_ns.is_some() && first.decode_ns.is_some();
+    let has_last = last.prefill_ns.is_some() && last.decode_ns.is_some();
+    let leg = match (has_first, has_last) {
+        (true, true) => Some(derive_time_share(first, last, total_mj, share_prefill_tok)?),
+        (false, false) => None,
+        _ => return None,
+    };
 
     Some(PhaseEnergyMetrics {
-        prefill_ns_delta,
-        decode_ns_delta,
+        prefill_ns_delta: leg.as_ref().map(|l| l.prefill_ns_delta),
+        decode_ns_delta: leg.as_ref().map(|l| l.decode_ns_delta),
         prompt_tokens_delta,
         generation_tokens_delta,
-        energy_prefill_by_time_mj,
-        energy_decode_by_time_mj,
+        energy_prefill_by_time_mj: leg.as_ref().map(|l| l.energy_prefill_mj),
+        energy_decode_by_time_mj: leg.as_ref().map(|l| l.energy_decode_mj),
         energy_prefill_by_tokens_mj,
         energy_decode_by_tokens_mj,
-        phase_energy_divergence,
+        phase_energy_divergence: leg.as_ref().map(|l| l.divergence),
     })
 }
 
@@ -1115,8 +1166,22 @@ mod tests {
             elapsed_ns,
             prompt_tokens,
             generation_tokens,
-            prefill_ns,
-            decode_ns,
+            prefill_ns: Some(prefill_ns),
+            decode_ns: Some(decode_ns),
+        }
+    }
+
+    fn phase_sample_without_timing(
+        elapsed_ns: u64,
+        prompt_tokens: u64,
+        generation_tokens: u64,
+    ) -> is_core::PhaseSample {
+        is_core::PhaseSample {
+            elapsed_ns,
+            prompt_tokens,
+            generation_tokens,
+            prefill_ns: None,
+            decode_ns: None,
         }
     }
 
@@ -1138,21 +1203,21 @@ mod tests {
         let m = derive_phase_energy(&tl, Some(100_000), Some(is_core::EnergySource::Counter))
             .expect("valid window with energy should apportion");
 
-        assert_eq!(m.prefill_ns_delta, 14493);
-        assert_eq!(m.decode_ns_delta, 28432);
+        assert_eq!(m.prefill_ns_delta, Some(14493));
+        assert_eq!(m.decode_ns_delta, Some(28432));
         assert_eq!(m.prompt_tokens_delta, 196);
         assert_eq!(m.generation_tokens_delta, 38);
 
         // time-share: 14493 / 42925 = 0.3376354..., x100000 -> 33764.
-        assert_eq!(m.energy_prefill_by_time_mj, 33764);
-        assert_eq!(m.energy_decode_by_time_mj, 100_000 - 33764);
+        assert_eq!(m.energy_prefill_by_time_mj, Some(33764));
+        assert_eq!(m.energy_decode_by_time_mj, Some(100_000 - 33764));
         // token-share: 196 / 234 = 0.8376068..., x100000 -> 83761.
         assert_eq!(m.energy_prefill_by_tokens_mj, 83761);
         assert_eq!(m.energy_decode_by_tokens_mj, 100_000 - 83761);
 
         // Conservative split: each basis sums to the total exactly.
         assert_eq!(
-            m.energy_prefill_by_time_mj + m.energy_decode_by_time_mj,
+            m.energy_prefill_by_time_mj.unwrap() + m.energy_decode_by_time_mj.unwrap(),
             100_000
         );
         assert_eq!(
@@ -1161,7 +1226,7 @@ mod tests {
         );
 
         // divergence = 0.3376354 - 0.8376068 = -0.4999714...
-        assert!((m.phase_energy_divergence - (-0.4999714)).abs() < 1e-6);
+        assert!((m.phase_energy_divergence.unwrap() - (-0.4999714)).abs() < 1e-6);
     }
 
     #[test]
@@ -1212,6 +1277,56 @@ mod tests {
         ]);
         assert!(
             derive_phase_energy(&tl, Some(100_000), Some(is_core::EnergySource::Counter)).is_none()
+        );
+    }
+
+    #[test]
+    fn derive_phase_energy_without_a_timing_family_keeps_the_token_leg() {
+        // ADR-014 D3: SGLang exposes no per-phase timing counters. The
+        // token-share apportionment was still measured and is reported;
+        // the five time-share fields are absent, not zero.
+        let tl = phase_timeline_from(vec![
+            phase_sample_without_timing(0, 0, 0),
+            phase_sample_without_timing(1_000_000, 196, 38),
+        ]);
+        let m = derive_phase_energy(&tl, Some(100_000), Some(is_core::EnergySource::Counter))
+            .expect("a token basis alone is still an apportionment");
+
+        assert_eq!(m.prompt_tokens_delta, 196);
+        assert_eq!(m.generation_tokens_delta, 38);
+        assert_eq!(m.energy_prefill_by_tokens_mj, 83761);
+        assert_eq!(m.energy_decode_by_tokens_mj, 100_000 - 83761);
+
+        // The five time-share fields travel as one unit.
+        assert_eq!(m.prefill_ns_delta, None);
+        assert_eq!(m.decode_ns_delta, None);
+        assert_eq!(m.energy_prefill_by_time_mj, None);
+        assert_eq!(m.energy_decode_by_time_mj, None);
+        assert_eq!(m.phase_energy_divergence, None);
+    }
+
+    #[test]
+    fn derive_phase_energy_timing_present_in_only_one_sample_is_none() {
+        // A window that gains or loses the timing family mid-run is a
+        // discontinuity of the same class as a counter reset: the two
+        // endpoints are not commensurable, so nothing is reported —
+        // including the token leg, which shares the window.
+        let gained = phase_timeline_from(vec![
+            phase_sample_without_timing(0, 0, 0),
+            phase_sample(1_000_000, 196, 38, 14493, 28432),
+        ]);
+        assert!(
+            derive_phase_energy(&gained, Some(100_000), Some(is_core::EnergySource::Counter))
+                .is_none()
+        );
+
+        let lost = phase_timeline_from(vec![
+            phase_sample(0, 0, 0, 0, 0),
+            phase_sample_without_timing(1_000_000, 196, 38),
+        ]);
+        assert!(
+            derive_phase_energy(&lost, Some(100_000), Some(is_core::EnergySource::Counter))
+                .is_none()
         );
     }
 

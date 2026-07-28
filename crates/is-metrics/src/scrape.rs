@@ -397,8 +397,8 @@ mod tests {
 
         assert_eq!(sample.prompt_tokens, 196);
         assert_eq!(sample.generation_tokens, 38);
-        assert_eq!(sample.prefill_ns, 14493);
-        assert_eq!(sample.decode_ns, 28432);
+        assert_eq!(sample.prefill_ns, Some(14493));
+        assert_eq!(sample.decode_ns, Some(28432));
     }
 
     #[tokio::test]
@@ -461,8 +461,8 @@ mod tests {
         for s in &timeline.samples {
             assert_eq!(s.prompt_tokens, 196);
             assert_eq!(s.generation_tokens, 38);
-            assert_eq!(s.prefill_ns, 14493);
-            assert_eq!(s.decode_ns, 28432);
+            assert_eq!(s.prefill_ns, Some(14493));
+            assert_eq!(s.decode_ns, Some(28432));
         }
     }
 }

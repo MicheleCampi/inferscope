@@ -30,10 +30,12 @@ use serde::{Deserialize, Serialize};
 /// `prompt_tokens` and `generation_tokens` are the raw cumulative counter
 /// values as read from the endpoint — not deltas. `prefill_ns` and
 /// `decode_ns` are the cumulative time-in-phase, converted from the
-/// histogram `_sum` float seconds to integer nanoseconds at parse time.
-/// All four are cumulative since the engine started; the window deltas and
-/// the derived apportionments are computed at the reporting layer from the
-/// first and last samples of a [`PhaseTimeline`] (see ADR-012).
+/// histogram `_sum` float seconds to integer nanoseconds at parse time,
+/// and are `Option` because not every engine exposes a per-phase timing
+/// family (ADR-014 D3). Every present value is cumulative since the
+/// engine started; the window deltas and the derived apportionments are
+/// computed at the reporting layer from the first and last samples of a
+/// [`PhaseTimeline`] (see ADR-012).
 ///
 /// `elapsed_ns` is nanoseconds since the same reference instant the CPU
 /// and GPU samplers use, so a phase sample can be correlated with a GPU
@@ -51,12 +53,19 @@ pub struct PhaseSample {
     pub generation_tokens: u64,
     /// Cumulative time spent in prefill, in nanoseconds: the
     /// `vllm:request_prefill_time_seconds_sum` value converted from
-    /// seconds at parse time.
-    pub prefill_ns: u64,
+    /// seconds at parse time. `None` when the engine exposes no
+    /// per-phase timing family at all (ADR-014 D3); absence travels as
+    /// absence, never as a zero that would fabricate a measurement.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub prefill_ns: Option<u64>,
     /// Cumulative time spent in decode, in nanoseconds: the
     /// `vllm:request_decode_time_seconds_sum` value converted from
-    /// seconds at parse time.
-    pub decode_ns: u64,
+    /// seconds at parse time. Absent under exactly the same condition
+    /// as `prefill_ns`: the two are one capability, and a sample
+    /// carrying one without the other is a discontinuity the reporting
+    /// layer withholds on.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub decode_ns: Option<u64>,
 }
 
 /// A complete timeline of phase scrapes for one probe run.
@@ -120,8 +129,18 @@ mod tests {
             elapsed_ns,
             prompt_tokens: prompt,
             generation_tokens: generation,
-            prefill_ns,
-            decode_ns,
+            prefill_ns: Some(prefill_ns),
+            decode_ns: Some(decode_ns),
+        }
+    }
+
+    fn sample_without_timing(elapsed_ns: u64, prompt: u64, generation: u64) -> PhaseSample {
+        PhaseSample {
+            elapsed_ns,
+            prompt_tokens: prompt,
+            generation_tokens: generation,
+            prefill_ns: None,
+            decode_ns: None,
         }
     }
 
@@ -149,6 +168,32 @@ mod tests {
         let json = serde_json::to_string(&s).expect("serialize");
         let restored: PhaseSample = serde_json::from_str(&json).expect("deserialize");
         assert_eq!(s, restored);
+    }
+
+    #[test]
+    fn a_sample_without_timing_omits_the_fields_it_never_measured() {
+        // ADR-014 D3: an engine with no per-phase timing family emits no
+        // key at all, rather than a zero a reader would take for a
+        // measurement.
+        let s = sample_without_timing(412_000_000, 2320, 512);
+        let json = serde_json::to_string(&s).expect("serialize");
+        assert!(!json.contains("prefill_ns"), "{json}");
+        assert!(!json.contains("decode_ns"), "{json}");
+        let restored: PhaseSample = serde_json::from_str(&json).expect("deserialize");
+        assert_eq!(s, restored);
+        assert!(restored.prefill_ns.is_none());
+    }
+
+    #[test]
+    fn a_pre_adr_014_sample_still_reads_as_present() {
+        // Archived reports under validation-results/ predate the Option
+        // and carry both keys. They must deserialize as measurements
+        // taken, not as absence.
+        let json = r#"{"elapsed_ns":412000000,"prompt_tokens":196,
+            "generation_tokens":38,"prefill_ns":14493,"decode_ns":28432}"#;
+        let restored: PhaseSample = serde_json::from_str(json).expect("deserialize");
+        assert_eq!(restored.prefill_ns, Some(14493));
+        assert_eq!(restored.decode_ns, Some(28432));
     }
 
     #[test]

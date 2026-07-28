@@ -230,22 +230,20 @@ fn parse_seconds_as_nanos(body: &str, metric: &str, model_name: &str) -> Result<
 
 /// Reads a phase-time series the schema may not declare at all.
 ///
-/// A `None` name is a declared capability gap (ADR-014 D3), not a series
-/// that failed to turn up. Until the phase legs become optional downstream
-/// it is still an error here — but one that names the engine's limit
-/// rather than blaming the body.
+/// The two cases this separates are the whole of ADR-014 D3. A `None`
+/// name is a declared capability gap: the engine has no such family, and
+/// `Ok(None)` reports that without inventing a number. A declared name
+/// that fails to turn up in the body is unchanged — still an error,
+/// because the schema said it would be there.
 fn parse_phase_time(
     body: &str,
     metric: Option<&'static str>,
     model_name: &str,
-    phase: &str,
-) -> Result<u64, MetricsError> {
+) -> Result<Option<u64>, MetricsError> {
     let Some(metric) = metric else {
-        return Err(MetricsError::Parse {
-            detail: format!("this engine exposes no {phase} time counter"),
-        });
+        return Ok(None);
     };
-    parse_seconds_as_nanos(body, metric, model_name)
+    parse_seconds_as_nanos(body, metric, model_name).map(Some)
 }
 
 /// Parses both KV-cache counters from a text-exposition body.
@@ -282,16 +280,16 @@ pub fn parse_kvcache(
 /// phase-time `_sum` values converted from float seconds to integer
 /// nanoseconds. The series are named by `engine`'s schema (ADR-014 D1).
 ///
-/// All four are still required: a phase split cannot be formed without all
-/// of them, so a missing series is an error — and so, for now, is an
-/// engine whose schema declares no phase timing at all. Making that second
-/// case a first-class absence is ADR-014 D3, deliberately left to its own
-/// change so this one does not move both the names and the return type.
+/// The token counters are required — without them there is no phase split
+/// in either basis. The timing legs are `Option` (ADR-014 D3): `None`
+/// when the engine's schema declares no per-phase timing family, which is
+/// a capability gap rather than a parse failure. A series the schema does
+/// declare and the body does not carry remains an error.
 pub fn parse_phase(
     body: &str,
     model_name: &str,
     engine: Engine,
-) -> Result<(u64, u64, u64, u64), MetricsError> {
+) -> Result<(u64, u64, Option<u64>, Option<u64>), MetricsError> {
     let schema = engine.schema();
 
     let prompt_tokens = parse_series(body, &schema.prompt_tokens, model_name)?;
@@ -300,8 +298,8 @@ pub fn parse_phase(
     let generation_tokens = parse_series(body, &schema.generation_tokens, model_name)?;
     let generation_tokens = require(generation_tokens, schema.generation_tokens.name, model_name)?;
 
-    let prefill_ns = parse_phase_time(body, schema.prefill_time_sum, model_name, "prefill")?;
-    let decode_ns = parse_phase_time(body, schema.decode_time_sum, model_name, "decode")?;
+    let prefill_ns = parse_phase_time(body, schema.prefill_time_sum, model_name)?;
+    let decode_ns = parse_phase_time(body, schema.decode_time_sum, model_name)?;
 
     Ok((prompt_tokens, generation_tokens, prefill_ns, decode_ns))
 }
@@ -558,12 +556,15 @@ mod tests {
             parse_phase(FIXTURE, "facebook/opt-125m", Engine::Vllm).unwrap();
         assert_eq!(prompt_tokens, 196);
         assert_eq!(generation_tokens, 38);
-        assert_eq!(prefill_ns, 14_493);
-        assert_eq!(decode_ns, 28_432);
+        assert_eq!(prefill_ns, Some(14_493));
+        assert_eq!(decode_ns, Some(28_432));
     }
 
     #[test]
-    fn parse_phase_missing_any_series_errors() {
+    fn parse_phase_missing_a_declared_series_still_errors() {
+        // The other side of ADR-014 D3: the vLLM schema declares the
+        // timing families, so a body that does not carry them is a
+        // defective body, not an engine without the capability.
         let body = "vllm:prompt_tokens_total{model_name=\"m\"} 10\n\
                     vllm:generation_tokens_total{model_name=\"m\"} 5\n";
         let err = parse_phase(body, "m", Engine::Vllm).unwrap_err();
@@ -571,17 +572,16 @@ mod tests {
     }
 
     #[test]
-    fn parse_phase_on_an_engine_without_timing_names_the_gap() {
+    fn parse_phase_on_an_engine_without_timing_yields_absence_not_error() {
         // SGLang exposes no phase-separated timing counters (ADR-014
-        // D3). Until the phase legs become optional this is still an
-        // error, but one that says so rather than blaming the body.
-        let err = parse_phase(SGLANG_PER_SOURCE, SGLANG_MODEL, SGLANG).unwrap_err();
-        let MetricsError::Parse { detail } = err else {
-            panic!("expected a parse error");
-        };
-        assert!(
-            detail.contains("no prefill time counter"),
-            "detail should name the capability gap, got: {detail}"
-        );
+        // D3). The tokens parse; the timing legs come back absent, and
+        // absence is not zero — a zero here would be a measurement the
+        // engine never took.
+        let (prompt_tokens, generation_tokens, prefill_ns, decode_ns) =
+            parse_phase(SGLANG_PER_SOURCE, SGLANG_MODEL, SGLANG).unwrap();
+        assert_eq!(prompt_tokens, 3400);
+        assert_eq!(generation_tokens, 512);
+        assert_eq!(prefill_ns, None);
+        assert_eq!(decode_ns, None);
     }
 }

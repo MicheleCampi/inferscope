@@ -67,9 +67,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   that absence as a zero would report a 0% hit rate for a server serving most
   of its prompt tokens from cache. The scrape loop treats an absent numerator the
   way it treats any failed tick: no sample, timeline continues. `parse_phase`
-  likewise takes the engine; its return type is unchanged, and an engine
-  whose schema declares no phase timing errors while naming that gap rather
-  than blaming the body (ADR-014 D3 will make it a first-class absence).
+  likewise takes the engine.
+
+- **Breaking: per-phase timing is `Option`, and absence is not zero
+  (ADR-014 D3).** `PhaseSample::prefill_ns` / `decode_ns`, and the five
+  time-share fields of `PhaseEnergyMetrics`, are now `Option`.
+  `parse_phase` returns `(u64, u64, Option<u64>, Option<u64>)`: an engine
+  whose schema declares no per-phase timing family yields absence rather
+  than an error, while a series the schema does declare and the body does
+  not carry remains an error — the two were indistinguishable before.
+  SGLang exposes no such family, so ADR-012's apportionment there reports
+  its token-share leg and five absent fields instead of being withheld
+  entirely. What that costs is stated on the type: without the time-share
+  leg the divergence does not exist, and the token-share figure loses the
+  cross-check that made the attribution falsifiable inside the tool. The
+  five fields travel as one unit by construction rather than by
+  convention, and a window that gains or loses the family mid-run is
+  withheld whole, as a counter reset already was. On the serialized side
+  the fields are omitted when absent and read as present when a report
+  predates this change, so archived evidence under `validation-results/`
+  deserializes as measurements taken and a vLLM report is unchanged.
 
 ### Fixed
 

@@ -252,27 +252,45 @@ pub struct KvCacheMetrics {
 ///
 /// Withheld (`None`) when the window has fewer than two samples, any
 /// cumulative counter regresses (engine reset), no energy figure exists
-/// to apportion, or either basis has a zero delta (a zero phase-time
-/// delta makes the time-share undefined; a zero token delta makes the
-/// token-share undefined). Because the divergence needs both shares, a
-/// missing apportionment withholds the whole struct rather than emitting
-/// half of it — the same all-or-nothing discipline as [`KvCacheMetrics`].
+/// to apportion, or the token basis has a zero delta.
+///
+/// The time-share leg is itself `Option` (ADR-014 D3). An engine that
+/// exposes no per-phase timing family — SGLang — still yields a
+/// token-share apportionment, and withholding the whole struct there
+/// would discard a measurement that was taken. The five time-share
+/// fields are one unit: either all five are present or none are, which
+/// [`crate::derive::derive_phase_energy`] guarantees by construction
+/// rather than by convention.
+///
+/// What that costs is stated rather than hidden: without the time-share
+/// leg the divergence does not exist, and the token-share figure loses
+/// the cross-check that made ADR-012's attribution falsifiable from
+/// inside the tool. A cross-engine claim about phase attribution is
+/// vLLM-only unless an instrument outside inferscope supplies the
+/// second basis.
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 pub struct PhaseEnergyMetrics {
-    /// Window delta of cumulative prefill time, nanoseconds.
-    pub prefill_ns_delta: u64,
-    /// Window delta of cumulative decode time, nanoseconds.
-    pub decode_ns_delta: u64,
+    /// Window delta of cumulative prefill time, nanoseconds. `None`
+    /// when the engine exposes no per-phase timing family (ADR-014 D3).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub prefill_ns_delta: Option<u64>,
+    /// Window delta of cumulative decode time, nanoseconds. Absent
+    /// under exactly the same condition as `prefill_ns_delta`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub decode_ns_delta: Option<u64>,
     /// Window delta of cumulative prompt (prefill) tokens.
     pub prompt_tokens_delta: u64,
     /// Window delta of cumulative generation (decode) tokens.
     pub generation_tokens_delta: u64,
     /// Energy apportioned to prefill by time-share
-    /// `prefill_ns / (prefill_ns + decode_ns)`, millijoules.
-    pub energy_prefill_by_time_mj: u64,
+    /// `prefill_ns / (prefill_ns + decode_ns)`, millijoules. `None`
+    /// when there is no timing leg to form the share from.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub energy_prefill_by_time_mj: Option<u64>,
     /// Energy apportioned to decode by time-share, the remainder of the
     /// total after the prefill time-share, millijoules.
-    pub energy_decode_by_time_mj: u64,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub energy_decode_by_time_mj: Option<u64>,
     /// Energy apportioned to prefill by token-share
     /// `prompt_tok / (prompt_tok + gen_tok)`, millijoules.
     pub energy_prefill_by_tokens_mj: u64,
@@ -283,8 +301,10 @@ pub struct PhaseEnergyMetrics {
     /// token-share. Quantifies the energy-per-token asymmetry between
     /// compute-bound prefill and memory-bound decode. Negative when
     /// decode spreads the energy budget over proportionally more tokens
-    /// than its time-share would suggest.
-    pub phase_energy_divergence: f64,
+    /// than its time-share would suggest. `None` when the time-share
+    /// leg is absent: a divergence needs two bases to differ.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub phase_energy_divergence: Option<f64>,
 }
 
 /// The full report for one probe run: raw signals plus derived

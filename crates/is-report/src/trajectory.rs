@@ -400,11 +400,21 @@ pub fn derive_trajectory_from_timelines(
         }
     }
     if let Some(ph) = phase_timeline {
+        // The timing legs are `Option` (ADR-014 D3), so `Option` ordering
+        // must not stand in for numeric comparison: `None < Some(0)` would
+        // read a capability gap as a regression. Compare the values only
+        // when both endpoints carry them, and treat a pair that gains or
+        // loses the family as the discontinuity it is.
+        let regressed = |a: Option<u64>, b: Option<u64>| match (a, b) {
+            (Some(a), Some(b)) => b < a,
+            (None, None) => false,
+            _ => true,
+        };
         if ph.samples.windows(2).any(|p| {
             p[1].prompt_tokens < p[0].prompt_tokens
                 || p[1].generation_tokens < p[0].generation_tokens
-                || p[1].prefill_ns < p[0].prefill_ns
-                || p[1].decode_ns < p[0].decode_ns
+                || regressed(p[0].prefill_ns, p[1].prefill_ns)
+                || regressed(p[0].decode_ns, p[1].decode_ns)
         }) {
             return None;
         }
@@ -614,8 +624,8 @@ mod derive_tests {
                     elapsed_ns: t * S,
                     prompt_tokens: t * 50,
                     generation_tokens: t * 100,
-                    prefill_ns: t * 1_000,
-                    decode_ns: t * 2_000,
+                    prefill_ns: Some(t * 1_000),
+                    decode_ns: Some(t * 2_000),
                 })
                 .collect(),
             sample_period_ns: S,
