@@ -29,6 +29,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   selects series through the schema, so that a caller declaring SGLang cannot
   be parsed with the `vllm:` vocabulary and handed a plausible wrong number.
 
+- **The engine schema, and a numerator that sums (ADR-014 D1, D4).**
+  `is-metrics` now selects its series through an internal `EngineSchema`
+  rather than six `vllm:` constants, and the parser reduces a metric family
+  as the schema declares: one line, or a sum across a label. SGLang needs the
+  second — `sglang:cached_tokens_total` is split across `cache_source`, and a
+  body can carry both the per-source lines and the reserved `total` line that
+  repeats their whole, because the two emission paths are mutually exclusive
+  per request while the counter is cumulative. The reserved value is excluded
+  by name rather than the sources whitelisted, so a `storage_<backend>` this
+  code has never seen is counted rather than silently dropped. SGLang's
+  fixtures are synthetic and say so in their headers: they are built from the
+  collector read at source and cross-checked against the series names
+  SGLang's own tests and benchmark parser assert.
+
 ### Changed
 
 - **Breaking: three public constructors gained a parameter.**
@@ -41,6 +55,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   defaulted to a measurement that was not taken. Resolving that absence from
   the report's schema version (ADR-014 D7) lands with the reporting change,
   not here.
+
+- **Breaking: `parse_kvcache` takes the engine and returns an optional
+  numerator.** The signature is now
+  `(body, model_name, engine) -> Result<(Option<u64>, u64), _>`. The engine
+  names the series; the `Option` carries a distinction the old signature
+  could not express. A body can hold the hit-rate denominator and no
+  numerator at all — on SGLang the numerator family appears only once the
+  prefix cache has been hit, and the backward-compatible emission path puts
+  every cached token under the reserved label that the sum excludes. Reading
+  that absence as a zero would report a 0% hit rate for a server serving most
+  of its prompt tokens from cache. The scrape loop treats an absent numerator the
+  way it treats any failed tick: no sample, timeline continues. `parse_phase`
+  likewise takes the engine; its return type is unchanged, and an engine
+  whose schema declares no phase timing errors while naming that gap rather
+  than blaming the body (ADR-014 D3 will make it a first-class absence).
 
 ### Fixed
 

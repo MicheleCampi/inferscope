@@ -21,11 +21,17 @@
 //! - [`config`]: what to scrape — endpoint, model label, period.
 //! - [`error`]: the failure modes of an HTTP scrape (transport,
 //!   non-success status, parse).
+//!
+//! A private `schema` module holds the metric vocabulary each engine
+//! speaks (ADR-014). It stays internal: series names are how this crate
+//! reads a body, not something a caller declares or a report carries.
 
 pub mod config;
 pub mod error;
 pub mod parse;
 pub mod scrape;
+
+mod schema;
 
 pub use config::{Engine, MetricsConfig};
 pub use error::MetricsError;

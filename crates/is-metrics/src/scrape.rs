@@ -84,7 +84,19 @@ pub async fn scrape_once(
         .await
         .map_err(|source| MetricsError::Http { source })?;
 
-    let (hits, queries) = parse_kvcache(&body, &config.model_name)?;
+    let (hits, queries) = parse_kvcache(&body, &config.model_name, config.engine)?;
+
+    // An absent numerator is not a zero one (ADR-014 D4). `KvCacheSample`
+    // cannot hold the distinction, so rather than write absence as zero
+    // this scrape produces nothing at all — the same outcome the loop
+    // already gives any failed tick, and the timeline carries on.
+    let hits = hits.ok_or_else(|| MetricsError::Parse {
+        detail: format!(
+            "no hit-rate numerator for model_name {:?}: the body carries the \
+             denominator but nothing to count against it",
+            config.model_name
+        ),
+    })?;
 
     Ok(KvCacheSample {
         elapsed_ns,
@@ -184,7 +196,7 @@ pub async fn scrape_phase_once(
         .map_err(|source| MetricsError::Http { source })?;
 
     let (prompt_tokens, generation_tokens, prefill_ns, decode_ns) =
-        parse_phase(&body, &config.model_name)?;
+        parse_phase(&body, &config.model_name, config.engine)?;
 
     Ok(PhaseSample {
         elapsed_ns,

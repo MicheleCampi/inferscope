@@ -1,0 +1,26 @@
+# Fixture: SYNTHETIC. Not captured from a running server.
+# Same provenance as sglang-tokenizer-metrics-per-source.txt.
+#
+# Shape this fixture exercises (ADR-014 D4): the backward-compatible path
+# in observe_one_finished_request (metrics_collector.py:1688-1691), taken
+# when the scheduler reports no cached_tokens_details. Every cached token
+# lands under the reserved cache_source="total" and there is no per-source
+# line at all.
+#
+# The hit-rate numerator is therefore ABSENT, not zero: excluding the
+# reserved value leaves nothing to sum. A parser that read this as a zero
+# numerator would report a 0.0 hit rate on a server that is in fact
+# serving 2320 cached tokens out of 3400.
+#
+# HELP sglang:prompt_tokens_total Number of prefill tokens processed.
+# TYPE sglang:prompt_tokens_total counter
+sglang:prompt_tokens_total{model_name="Qwen/Qwen2.5-7B-Instruct",engine_type="unified"} 3400
+# HELP sglang:generation_tokens_total Number of generation tokens processed.
+# TYPE sglang:generation_tokens_total counter
+sglang:generation_tokens_total{model_name="Qwen/Qwen2.5-7B-Instruct",engine_type="unified"} 512
+# HELP sglang:cached_tokens_total Number of cached prompt tokens by source (device/host/storage).
+# TYPE sglang:cached_tokens_total counter
+sglang:cached_tokens_total{model_name="Qwen/Qwen2.5-7B-Instruct",engine_type="unified",cache_source="total"} 2320
+# HELP sglang:num_requests_total Number of requests processed.
+# TYPE sglang:num_requests_total counter
+sglang:num_requests_total{model_name="Qwen/Qwen2.5-7B-Instruct",engine_type="unified"} 12

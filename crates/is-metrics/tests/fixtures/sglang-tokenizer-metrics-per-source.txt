@@ -1,0 +1,50 @@
+# Fixture: SYNTHETIC. Not captured from a running server.
+# Constructed from the SGLang tokenizer metrics collector read at source:
+#   python/sglang/srt/observability/metrics_collector.py @ 8a311d1c (2026-07-27)
+#   TokenizerMetricsCollector (class at line 1427), label dict built in
+#   python/sglang/srt/managers/tokenizer_manager.py:614
+# Series names cross-checked against the SGLang repo's own consumers:
+#   test/registered/observability/test_metrics.py:178-180 (asserted present)
+#   python/sglang/benchmark/one_batch_server.py:65,71 (parsed by prefix)
+#
+# Shape this fixture exercises (ADR-014 D1/D4):
+#   - cached_tokens_total split across cache_source: device, host, and a
+#     dynamic storage_<backend> this parser has never been told about.
+#   - a cache_source="total" line alongside them. The two paths are
+#     mutually exclusive per request but the counter is cumulative, so a
+#     server upgraded mid-run carries both. It is excluded by name, not by
+#     whitelisting the sources: the sum here is 1800+400+120 = 2320.
+#   - _created lines, which prometheus_client emits beside every counter
+#     and which an exact name match must not pick up.
+#   - a second model, and label orders where model_name is not first.
+#
+# HELP sglang:cache_hit_rate The prefix cache hit rate.
+# TYPE sglang:cache_hit_rate gauge
+sglang:cache_hit_rate{model_name="Qwen/Qwen2.5-7B-Instruct",engine_type="unified"} 0.6823
+# HELP sglang:prompt_tokens_total Number of prefill tokens processed.
+# TYPE sglang:prompt_tokens_total counter
+sglang:prompt_tokens_total{model_name="Qwen/Qwen2.5-7B-Instruct",engine_type="unified"} 3400
+sglang:prompt_tokens_total{model_name="meta-llama/Llama-3.1-8B",engine_type="unified"} 77
+# HELP sglang:prompt_tokens_created
+# TYPE sglang:prompt_tokens_created gauge
+sglang:prompt_tokens_created{model_name="Qwen/Qwen2.5-7B-Instruct",engine_type="unified"} 1.7857e+09
+# HELP sglang:generation_tokens_total Number of generation tokens processed.
+# TYPE sglang:generation_tokens_total counter
+sglang:generation_tokens_total{engine_type="unified",model_name="Qwen/Qwen2.5-7B-Instruct"} 512
+sglang:generation_tokens_total{model_name="meta-llama/Llama-3.1-8B",engine_type="unified"} 19
+# HELP sglang:generation_tokens_created
+# TYPE sglang:generation_tokens_created gauge
+sglang:generation_tokens_created{model_name="Qwen/Qwen2.5-7B-Instruct",engine_type="unified"} 1.7857e+09
+# HELP sglang:cached_tokens_total Number of cached prompt tokens by source (device/host/storage).
+# TYPE sglang:cached_tokens_total counter
+sglang:cached_tokens_total{model_name="Qwen/Qwen2.5-7B-Instruct",engine_type="unified",cache_source="device"} 1800
+sglang:cached_tokens_total{cache_source="host",model_name="Qwen/Qwen2.5-7B-Instruct",engine_type="unified"} 400
+sglang:cached_tokens_total{model_name="Qwen/Qwen2.5-7B-Instruct",engine_type="unified",cache_source="storage_hf3fs"} 120
+sglang:cached_tokens_total{model_name="Qwen/Qwen2.5-7B-Instruct",engine_type="unified",cache_source="total"} 999
+sglang:cached_tokens_total{model_name="meta-llama/Llama-3.1-8B",engine_type="unified",cache_source="device"} 55
+# HELP sglang:cached_tokens_created
+# TYPE sglang:cached_tokens_created gauge
+sglang:cached_tokens_created{model_name="Qwen/Qwen2.5-7B-Instruct",engine_type="unified",cache_source="device"} 1.7857e+09
+# HELP sglang:num_requests_total Number of requests processed.
+# TYPE sglang:num_requests_total counter
+sglang:num_requests_total{model_name="Qwen/Qwen2.5-7B-Instruct",engine_type="unified"} 12
