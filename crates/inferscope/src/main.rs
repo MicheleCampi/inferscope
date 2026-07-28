@@ -329,6 +329,7 @@ async fn orchestrate(args: Args) -> Result<(), String> {
         phase_energy,
         trajectory: None,
         reference_instant_unix_ns,
+        schema_version: Some(is_report::REPORT_SCHEMA_VERSION),
     };
     // Trajectory-level attribution (ADR-013): offline join of the
     // driver's step boundaries against the report's timelines.
@@ -521,6 +522,7 @@ async fn run_sample_only(
         phase_timeline,
         phase_energy,
         trajectory,
+        schema_version: Some(is_report::REPORT_SCHEMA_VERSION),
     };
 
     // Sample-only always emits JSON: it is meant for machine consumption

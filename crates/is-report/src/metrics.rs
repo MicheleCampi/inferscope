@@ -9,7 +9,7 @@
 //! derived numbers or recompute them differently from the raw
 //! data.
 
-use is_core::{RequestTiming, ResourceTimeline};
+use is_core::{HitRateAccounting, RequestTiming, ResourceTimeline};
 use serde::{Deserialize, Serialize};
 
 use is_core::EnergySource;
@@ -208,6 +208,69 @@ pub struct EfficiencyMetrics {
     pub energy_source: EnergySource,
 }
 
+/// Schema version of a [`Report`] or [`crate::ResourceReport`] written
+/// by this build (ADR-014 D7).
+///
+/// Version 1 is the first version that exists at all. Reports written
+/// before ADR-014 carry no version field, and that absence is itself
+/// the evidence that the report predates multi-engine support — the
+/// only engine inferscope read then was vLLM. Readers resolve
+/// provenance from it rather than defaulting a measurement; see
+/// [`HitRateProvenance::resolve`].
+///
+/// This is not the crate version and does not follow it. It changes
+/// only when the shape or meaning of a serialized field changes.
+pub const REPORT_SCHEMA_VERSION: u32 = 1;
+
+/// What is known about how a rendered hit rate was accounted
+/// (ADR-014 D2, D7).
+///
+/// A rate measured under block-aligned accounting and one measured
+/// under exact-token accounting are the same number carrying different
+/// meanings, and are never presented identically. This is the resolved
+/// answer the rendering layer needs in order not to state a unit it
+/// cannot support.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum HitRateProvenance {
+    /// The accounting was recorded by the build that took the
+    /// measurement.
+    Measured(HitRateAccounting),
+    /// The report carries no schema version, so it was written before
+    /// ADR-014, when vLLM was the only engine. The accounting is
+    /// therefore block-aligned — an inference from the report's age,
+    /// rendered as an assumption rather than as a recorded fact.
+    AssumedBlockAligned,
+    /// The report is versioned but carries no accounting: written by a
+    /// build that knew about provenance and did not record it. Nothing
+    /// about the unit can be asserted.
+    Unknown,
+}
+
+impl HitRateProvenance {
+    /// Resolves what is known about the accounting of a hit rate, from
+    /// the report's schema version and the accounting recorded on its
+    /// timeline (ADR-014 D7).
+    ///
+    /// The resolution is deliberately not a default. A recorded
+    /// accounting is a fact and always wins. Its absence is read
+    /// against the version: absent version means the report predates
+    /// ADR-014 and therefore vLLM, which is an inference and is
+    /// rendered as one; a present version with no accounting means a
+    /// build that could have recorded provenance did not, and nothing
+    /// is asserted.
+    ///
+    /// A recorded accounting on an unversioned report is honoured
+    /// rather than second-guessed: it can only have been written by
+    /// hand, and a stated fact outranks an inference from age.
+    pub fn resolve(schema_version: Option<u32>, accounting: Option<HitRateAccounting>) -> Self {
+        match (accounting, schema_version) {
+            (Some(a), _) => Self::Measured(a),
+            (None, None) => Self::AssumedBlockAligned,
+            (None, Some(_)) => Self::Unknown,
+        }
+    }
+}
+
 /// Derived KV-cache metrics for one probe run (ADR-011).
 ///
 /// `vllm:prefix_cache_hits` and `vllm:prefix_cache_queries` are
@@ -232,6 +295,16 @@ pub struct KvCacheMetrics {
     /// Fraction of queried tokens served from cache over the
     /// window: `hits_delta / queries_delta`, in `0.0..=1.0`.
     pub hit_rate: f64,
+    /// How the engine accounted the numerator, carried from the
+    /// timeline this rate was derived from (ADR-014 D2).
+    ///
+    /// Duplicated here rather than left on the raw timeline for the
+    /// same reason `EfficiencyMetrics` carries `energy_source`: a
+    /// consumer that extracts the derived figure alone must still be
+    /// able to tell a block-aligned rate from an exact-token one.
+    /// `None` on reports written before ADR-014.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub accounting: Option<HitRateAccounting>,
 }
 
 /// Per-phase energy attribution over the scrape window (ADR-012).
@@ -363,6 +436,14 @@ pub struct Report {
     /// no GPU energy basis existed, or a counter regressed.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub trajectory: Option<crate::trajectory::TrajectoryMetrics>,
+    /// Version of the serialized report schema (ADR-014 D7).
+    ///
+    /// Always written by this build as [`REPORT_SCHEMA_VERSION`].
+    /// `None` only on reports written before ADR-014, and that
+    /// absence is load-bearing: it is how a reader knows the report
+    /// predates multi-engine support. See [`HitRateProvenance::resolve`].
+    #[serde(default)]
+    pub schema_version: Option<u32>,
 }
 
 #[cfg(test)]
@@ -443,6 +524,7 @@ mod tests {
             phase_timeline: None,
             phase_energy: None,
             trajectory: None,
+            schema_version: Some(REPORT_SCHEMA_VERSION),
         }
     }
 
@@ -486,6 +568,7 @@ mod tests {
             phase_timeline: None,
             phase_energy: None,
             trajectory: None,
+            schema_version: Some(crate::metrics::REPORT_SCHEMA_VERSION),
         };
 
         let json = serde_json::to_string(&original).expect("serialize");

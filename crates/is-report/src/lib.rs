@@ -38,8 +38,8 @@ pub use derive::{
 };
 pub use error::ReportError;
 pub use metrics::{
-    EfficiencyMetrics, GpuMetrics, KvCacheMetrics, LatencyDistribution, Report, ResourceMetrics,
-    TimingMetrics,
+    EfficiencyMetrics, GpuMetrics, HitRateProvenance, KvCacheMetrics, LatencyDistribution, Report,
+    ResourceMetrics, TimingMetrics, REPORT_SCHEMA_VERSION,
 };
 pub use render::{render_json, render_text};
 pub use resource_report::{render_resource_json, ResourceReport};

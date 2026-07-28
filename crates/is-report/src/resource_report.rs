@@ -61,6 +61,15 @@ pub struct ResourceReport {
     /// absent, no GPU energy basis existed, or a counter regressed.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub trajectory: Option<crate::trajectory::TrajectoryMetrics>,
+    /// Version of the serialized report schema (ADR-014 D7).
+    ///
+    /// Carried on both report shapes so a reader need not know which
+    /// of the two it holds before it can tell whether the document
+    /// predates multi-engine support. Always written by this build as
+    /// [`crate::metrics::REPORT_SCHEMA_VERSION`]; `None` only on
+    /// reports written before ADR-014.
+    #[serde(default)]
+    pub schema_version: Option<u32>,
 }
 
 /// Render a `ResourceReport` as pretty JSON.
@@ -95,6 +104,7 @@ mod tests {
                 phase_energy_divergence: Some(-0.4999714),
             }),
             trajectory: None,
+            schema_version: Some(crate::metrics::REPORT_SCHEMA_VERSION),
         };
         let json = render_resource_json(&report).unwrap();
         let back: ResourceReport = serde_json::from_str(&json).unwrap();
@@ -114,6 +124,7 @@ mod tests {
             phase_timeline: None,
             phase_energy: None,
             trajectory: None,
+            schema_version: None,
         };
         let json = render_resource_json(&report).unwrap();
         assert!(!json.contains("phase_timeline"));

@@ -211,6 +211,13 @@ pub fn derive_efficiency(
 /// - no queries occurred over the window (`queries_delta == 0`), leaving
 ///   nothing to divide by.
 ///
+/// `accounting` is carried through from the timeline unchanged: the
+/// rate travels with the provenance of its numerator, so a
+/// block-aligned figure and an exact-token one are never presented as
+/// the same quantity (ADR-014 D2). It is `None` only when the timeline
+/// itself carries none, i.e. on a report deserialized from before
+/// ADR-014.
+///
 /// `hit_rate` is `hits_delta / queries_delta`. A well-formed window has
 /// `hits_delta <= queries_delta` (you cannot hit more tokens than you
 /// queried), so the rate lands in `0.0..=1.0`; the function does not
@@ -244,6 +251,7 @@ pub fn derive_kvcache(timeline: &KvCacheTimeline) -> Option<KvCacheMetrics> {
         hits_delta,
         queries_delta,
         hit_rate: hits_delta as f64 / queries_delta as f64,
+        accounting: timeline.accounting,
     })
 }
 

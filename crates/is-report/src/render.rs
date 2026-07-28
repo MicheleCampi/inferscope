@@ -8,7 +8,11 @@
 
 use std::fmt::Write;
 
-use crate::metrics::{LatencyDistribution, Report, ResourceMetrics, TimingMetrics};
+use is_core::HitRateAccounting;
+
+use crate::metrics::{
+    HitRateProvenance, LatencyDistribution, Report, ResourceMetrics, TimingMetrics,
+};
 
 /// Renders the report as plain ASCII text targeted at terminal
 /// reading and copy-pasting into prose contexts.
@@ -50,9 +54,18 @@ pub fn render_text(report: &Report) -> String {
         out.push('\n');
         render_efficiency(&mut out, eff);
     }
-    if let Some(kv) = &report.kvcache {
-        out.push('\n');
-        render_kvcache(&mut out, kv);
+    match (&report.kvcache, &report.kvcache_timeline) {
+        (Some(kv), _) => {
+            out.push('\n');
+            render_kvcache(&mut out, kv, report.schema_version);
+        }
+        // Scraped, but no rate could be formed. Naming the reason keeps
+        // this distinguishable from a run that never scraped (ADR-014 D2).
+        (None, Some(tl)) => {
+            out.push('\n');
+            render_kvcache_withheld(&mut out, tl);
+        }
+        (None, None) => {}
     }
 
     out
@@ -221,7 +234,18 @@ fn render_efficiency(out: &mut String, eff: &crate::metrics::EfficiencyMetrics) 
 /// deltas are shown alongside it so the figure is traceable to the
 /// counters it came from, the same way the efficiency block shows the
 /// energy and token terms behind tokens-per-joule.
-fn render_kvcache(out: &mut String, kv: &crate::metrics::KvCacheMetrics) {
+///
+/// The unit line states the accounting the numerator was measured
+/// under (ADR-014 D2). vLLM truncates its hit counter to a block
+/// boundary while counting the denominator in exact tokens, so the
+/// rate it yields is a lower bound; SGLang at `page_size = 1` counts
+/// both in exact tokens. Printing one unit for both would state
+/// something false about one of them.
+fn render_kvcache(
+    out: &mut String,
+    kv: &crate::metrics::KvCacheMetrics,
+    schema_version: Option<u32>,
+) {
     let _ = writeln!(out, "KV-cache (prefix cache, probe window):");
     let _ = writeln!(
         out,
@@ -230,6 +254,38 @@ fn render_kvcache(out: &mut String, kv: &crate::metrics::KvCacheMetrics) {
         kv.hits_delta,
         kv.queries_delta,
     );
+    let note = match HitRateProvenance::resolve(schema_version, kv.accounting) {
+        HitRateProvenance::Measured(HitRateAccounting::BlockAligned) => {
+            "numerator block-aligned, denominator exact: rate is a lower bound"
+        }
+        HitRateProvenance::Measured(HitRateAccounting::ExactTokens) => {
+            "numerator and denominator both exact tokens"
+        }
+        HitRateProvenance::AssumedBlockAligned => {
+            "accounting not recorded; report predates ADR-014, so assumed \
+             block-aligned (lower bound)"
+        }
+        HitRateProvenance::Unknown => "accounting not recorded: unit unknown",
+    };
+    let _ = writeln!(out, "  Accounting         {note}");
+}
+
+/// Renders why no hit rate is shown when the endpoint was scraped but
+/// no rate could be formed (ADR-014 D2).
+///
+/// A silently missing section is indistinguishable from a run that
+/// never asked for the metric. The distinction matters most on an
+/// engine whose scrape carries a denominator and no numerator: every
+/// tick fails to parse, the timeline stays empty, and without this
+/// line the report would simply omit the section.
+fn render_kvcache_withheld(out: &mut String, timeline: &is_core::KvCacheTimeline) {
+    let reason = match timeline.samples.len() {
+        0 => "no scrape produced a usable sample",
+        1 => "only one scrape succeeded; a window needs two",
+        _ => "counter regressed, or no queries occurred in the window",
+    };
+    let _ = writeln!(out, "KV-cache (prefix cache, probe window):");
+    let _ = writeln!(out, "  Hit rate           withheld: {reason}");
 }
 
 /// Renders one line per GPU device showing the headline metrics
@@ -339,6 +395,7 @@ mod tests {
             phase_timeline: None,
             phase_energy: None,
             trajectory: None,
+            schema_version: Some(crate::metrics::REPORT_SCHEMA_VERSION),
         }
     }
 
@@ -379,6 +436,7 @@ mod tests {
             hits_delta: 86,
             queries_delta: 156,
             hit_rate: 86.0 / 156.0,
+            accounting: Some(HitRateAccounting::BlockAligned),
         });
         let text = render_text(&r);
         assert!(text.contains("KV-cache"));
@@ -393,9 +451,13 @@ mod tests {
     }
 
     #[test]
-    fn text_render_omits_kvcache_when_missing() {
+    fn text_render_omits_kvcache_when_never_scraped() {
         let mut r = sample_report();
         r.kvcache = None;
+        // No endpoint was configured, so there is nothing to report and
+        // nothing to withhold. Distinct from a scrape that yielded no
+        // usable window, which prints a reason (ADR-014 D2).
+        r.kvcache_timeline = None;
         let text = render_text(&r);
         assert!(text.contains("Probe summary"));
         assert!(!text.contains("KV-cache"));
@@ -440,6 +502,7 @@ mod tests {
             phase_timeline: None,
             phase_energy: None,
             trajectory: None,
+            schema_version: Some(crate::metrics::REPORT_SCHEMA_VERSION),
         };
         let text = render_text(&r);
         assert!(text.contains("Tokens generated      0"));
@@ -515,5 +578,98 @@ mod tests {
         assert_eq!(format_bytes(1024 * 1024), "1 MiB");
         assert_eq!(format_bytes(612 * 1024 * 1024), "612 MiB");
         assert_eq!(format_bytes(2 * 1024 * 1024 * 1024), "2.00 GiB");
+    }
+    #[test]
+    fn text_render_states_exact_token_accounting_when_measured() {
+        let mut r = sample_report();
+        r.kvcache = Some(crate::metrics::KvCacheMetrics {
+            hits_delta: 86,
+            queries_delta: 156,
+            hit_rate: 86.0 / 156.0,
+            accounting: Some(HitRateAccounting::ExactTokens),
+        });
+        let text = render_text(&r);
+        // The same numbers as the block-aligned case, and a different
+        // statement about what they mean (ADR-014 D2).
+        assert!(text.contains("86 / 156 tokens"));
+        assert!(text.contains("both exact tokens"));
+        assert!(!text.contains("lower bound"));
+    }
+
+    #[test]
+    fn text_render_marks_block_aligned_rate_as_a_lower_bound() {
+        let mut r = sample_report();
+        r.kvcache = Some(crate::metrics::KvCacheMetrics {
+            hits_delta: 86,
+            queries_delta: 156,
+            hit_rate: 86.0 / 156.0,
+            accounting: Some(HitRateAccounting::BlockAligned),
+        });
+        let text = render_text(&r);
+        assert!(text.contains("lower bound"));
+        assert!(!text.contains("both exact tokens"));
+    }
+
+    #[test]
+    fn text_render_calls_a_pre_adr014_report_assumed_not_measured() {
+        let mut r = sample_report();
+        r.schema_version = None;
+        r.kvcache = Some(crate::metrics::KvCacheMetrics {
+            hits_delta: 86,
+            queries_delta: 156,
+            hit_rate: 86.0 / 156.0,
+            accounting: None,
+        });
+        let text = render_text(&r);
+        // An inference from the report's age, and rendered as one.
+        assert!(text.contains("assumed"));
+        assert!(text.contains("lower bound"));
+    }
+
+    #[test]
+    fn text_render_asserts_no_unit_when_a_versioned_report_lacks_accounting() {
+        let mut r = sample_report();
+        r.kvcache = Some(crate::metrics::KvCacheMetrics {
+            hits_delta: 86,
+            queries_delta: 156,
+            hit_rate: 86.0 / 156.0,
+            accounting: None,
+        });
+        let text = render_text(&r);
+        assert!(text.contains("unit unknown"));
+        assert!(!text.contains("assumed"));
+        assert!(!text.contains("lower bound"));
+    }
+
+    #[test]
+    fn text_render_names_why_the_hit_rate_is_withheld_after_a_scrape() {
+        let mut r = sample_report();
+        r.kvcache = None;
+        // Scraped, but every tick failed to produce a sample: the shape a
+        // backward-compat SGLang server yields, where the body carries a
+        // denominator and no numerator (ADR-014 D2).
+        r.kvcache_timeline = Some(is_core::KvCacheTimeline::new(
+            1_000_000_000,
+            HitRateAccounting::ExactTokens,
+        ));
+        let text = render_text(&r);
+        assert!(text.contains("KV-cache"));
+        assert!(text.contains("withheld"));
+        assert!(text.contains("no scrape produced a usable sample"));
+    }
+
+    #[test]
+    fn text_render_distinguishes_a_single_scrape_from_none_at_all() {
+        let mut r = sample_report();
+        r.kvcache = None;
+        let mut tl = is_core::KvCacheTimeline::new(1_000_000_000, HitRateAccounting::BlockAligned);
+        tl.push(is_core::KvCacheSample {
+            elapsed_ns: 0,
+            hits: 10,
+            queries: 20,
+        });
+        r.kvcache_timeline = Some(tl);
+        let text = render_text(&r);
+        assert!(text.contains("a window needs two"));
     }
 }

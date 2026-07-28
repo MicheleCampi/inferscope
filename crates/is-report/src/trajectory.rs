@@ -650,6 +650,7 @@ mod derive_tests {
             phase_timeline: Some(phase),
             phase_energy: None,
             trajectory: None,
+            schema_version: Some(crate::metrics::REPORT_SCHEMA_VERSION),
         }
     }
 

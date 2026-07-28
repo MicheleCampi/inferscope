@@ -320,6 +320,7 @@ mod tests {
             resource: None,
             gpu: None,
             efficiency: None,
+            schema_version: Some(crate::metrics::REPORT_SCHEMA_VERSION),
         }
     }
 

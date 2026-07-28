@@ -43,6 +43,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   collector read at source and cross-checked against the series names
   SGLang's own tests and benchmark parser assert.
 
+- **Report provenance and an explicit schema version (ADR-014 D2, D7).**
+  A hit rate now travels with the accounting of its numerator all the way
+  to the rendered output: `KvCacheMetrics` carries the accounting
+  alongside the rate, for the same reason `EfficiencyMetrics` carries
+  `energy_source` — a consumer extracting the derived figure alone must
+  still be able to tell a block-aligned rate from an exact-token one. The
+  text report states which it is, so the same 55.1% is no longer printed
+  identically whether it underestimates or not. Both report shapes gain
+  `schema_version`, always written by this build; its absence is
+  load-bearing rather than a missing default, because a report without it
+  was written when vLLM was the only engine inferscope read, and that is
+  enough to resolve its accounting. A versioned report with no accounting
+  resolves to nothing at all and says so: the four cases are distinct in
+  the output and each is covered by a test.
+
+- **A withheld hit rate now says why.** A scrape that produced no usable
+  window used to omit the KV-cache section entirely, which read
+  identically to a run that never scraped. The section is now printed with
+  the reason — no usable sample, a single scrape where a window needs two,
+  or a counter regression. This is the shape a backward-compatible SGLang
+  server produces, where the body carries a denominator and no numerator:
+  the timeline stays empty, and before this change the report was silent
+  about it.
+
 ### Changed
 
 - **Breaking: three public constructors gained a parameter.**
@@ -52,9 +76,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   optional: a timeline built by the tool always knows which engine produced
   it. On the serialized side nothing is required — the field reads as absent
   in reports written before this change and is preserved as absent, never
-  defaulted to a measurement that was not taken. Resolving that absence from
-  the report's schema version (ADR-014 D7) lands with the reporting change,
-  not here.
+  defaulted to a measurement that was not taken. That absence is resolved
+  from the report's schema version by the reporting change below (ADR-014
+  D7).
 
 - **Breaking: `parse_kvcache` takes the engine and returns an optional
   numerator.** The signature is now
@@ -65,8 +89,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   prefix cache has been hit, and the backward-compatible emission path puts
   every cached token under the reserved label that the sum excludes. Reading
   that absence as a zero would report a 0% hit rate for a server serving most
-  of its prompt tokens from cache. The scrape loop treats an absent numerator the
-  way it treats any failed tick: no sample, timeline continues. `parse_phase`
+  of its prompt tokens from cache. The scrape loop treats an absent numerator
+  the way it treats any failed tick: no sample, timeline continues. `parse_phase`
   likewise takes the engine.
 
 - **Breaking: per-phase timing is `Option`, and absence is not zero
