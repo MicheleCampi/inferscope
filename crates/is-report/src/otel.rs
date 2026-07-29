@@ -252,7 +252,9 @@ pub fn export_to_otel(report: &Report, endpoint: &str) -> Result<(), OtelExportE
 
     // End the span at run_start + total_latency_ns, matching the
     // actual run duration rather than the wall-clock at function exit.
-    let run_end = run_start.checked_add(run_duration).unwrap_or(now);
+    let run_end = run_start
+        .checked_add(Duration::from_nanos(report.timing.total_latency_ns))
+        .unwrap_or(run_start);
     span.end_with_timestamp(run_end);
 
     // Force a synchronous flush before returning. shutdown() blocks
@@ -278,7 +280,7 @@ mod tests {
     //! local Jaeger or OTel Collector during release qualification;
     //! see RUNBOOK.md.
     //!
-    //! Both tests assert only that an Err is returned, not which
+    //! The test asserts only that an Err is returned, not which
     //! variant: opentelemetry-otlp 0.32 may catch malformed
     //! endpoints during builder construction (SetupFailed) or
     //! during the first flush (ExportFailed), and that detail is
@@ -320,6 +322,12 @@ mod tests {
             resource: None,
             gpu: None,
             efficiency: None,
+            kvcache_timeline: None,
+            kvcache: None,
+            phase_timeline: None,
+            phase_energy: None,
+            reference_instant_unix_ns: None,
+            trajectory: None,
             schema_version: Some(crate::metrics::REPORT_SCHEMA_VERSION),
         }
     }

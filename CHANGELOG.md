@@ -125,6 +125,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   same figure. A test now asserts the unit, not just the numbers; the
   absence of that assertion is why the wrong unit survived a release.
 
+- **The OpenTelemetry export did not compile, and no job looked.**
+  `is-report`'s `otel-export` feature (ADR-008) has been broken since
+  `c36db0c` introduced the ADR-013 wall-clock anchor: the anchor match
+  moved two bindings into a branch, leaving the span's end timestamp
+  referring to them from outside it, and the module's sample report was
+  never given the six fields ADR-011, ADR-012 and ADR-013 added to
+  `Report`. Three compile errors, in a file that ships in a released
+  crate. Nothing caught it because the CI builds and the documented
+  pre-flight both run without `--all-features`, so the feature had left
+  the verification loop entirely while its own test still read as
+  passing. The span now ends at `run_start + total_latency_ns` as its
+  comment always claimed, degrading to `run_start` on overflow like the
+  token events beside it. The exported attributes are unchanged and
+  still stop at ADR-010: KV-cache, per-phase and trajectory metrics
+  reach the JSON and text reports but not the trace, which is a gap in
+  ADR-008's contract rather than a regression, and is left for a
+  follow-up to decide deliberately.
+
 ## [0.4.0] — 2026-07-25
 
 The OpenTelemetry export and sample-only mode that sat unreleased since
@@ -132,6 +150,11 @@ May ship here, together with the energy, KV-cache, per-phase and
 per-trajectory work below. v0.3.0 tagged the per-device GPU metrics and
 nothing more: none of the energy or attribution features the README
 describes were in that tag, which is why this release exists.
+
+The OpenTelemetry export named above does not compile under its own
+feature in this tag — a defect found on 2026-07-29 and recorded under
+Unreleased. The sentence is left as it was published: what a tag
+claimed is part of what the tag was.
 
 ### Added
 
