@@ -5,12 +5,32 @@ All notable changes to inferscope are recorded here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [0.5.0] — 2026-07-29
+Multi-engine metric parsing (ADR-014): inferscope now reads SGLang as well
+as vLLM, and says which engine produced a hit rate rather than leaving the
+reader to assume. The engine is declared with `--engine`, mandatory when a
+metrics endpoint is scraped, because a body of the wrong vocabulary yields
+no series and any tolerant parse would render that absence as zero.
+
+Two things the earlier tags did not contain, stated here because their own
+release notes did not. v0.4.0 announced the OpenTelemetry export as shipped;
+that code had stopped compiling under its own feature on 2026-07-18 and was
+still broken when the tag was cut on 2026-07-25, because no CI job built
+with `--all-features`. It compiles and is tested from this release, and CI
+now carries a job that would have caught it. Separately, every tag from
+2026-06-21 onward names a Rust MSRV of 1.85 in some files and 1.83 in
+others; the surfaces are reconciled here.
+
+Breaking: three public constructors take an additional parameter, and
+per-phase timing fields became `Option`. Archived reports under
+`validation-results/` deserialize unchanged.
+
 
 ### Added
 
-- **ADR-014: multi-engine metric schema (vLLM + SGLang).** Design only, no
-  code. Establishes `EngineSchema` as a type rather than configuration —
+- **ADR-014: multi-engine metric schema (vLLM + SGLang).** The design;
+  the entries below implement it. Establishes `EngineSchema` as a type
+  rather than configuration —
   the hit-rate denominator and the prefill token count are two distinct
   series on vLLM and one and the same series on SGLang, which a name map
   cannot express. Records what each engine actually exposes, verified at

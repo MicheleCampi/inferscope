@@ -1,7 +1,11 @@
 # ADR-014: Multi-engine metric schema (vLLM + SGLang)
 
-- **Status**: Accepted
+- **Status**: Accepted, implemented
 - **Date**: 2026-07-26
+- **Implemented in**: v0.5.0 (b446c7e design; ea2891c D4 amendment;
+  39850b9 provenance; 04788c4 schema and summed numerator; 004db34
+  per-phase Option; c94dc99 report provenance and schema version;
+  529928e the `--engine` flag)
 - **Deciders**: Michele Campi
 
 ## Context
