@@ -19,7 +19,7 @@ llama.cpp's server, mistral.rs, vLLM, Ollama, TGI — is a target.
 
 ## Status
 
-**v0.4.0 released.** The profiling stack is stable across CPU and
+**v0.5.0 released.** The profiling stack is stable across CPU and
 NVIDIA GPU. GPU support is NVIDIA-only today; all GPU and energy
 features are gated behind the `gpu-nvidia` feature flag.
 
@@ -34,13 +34,23 @@ features are gated behind the `gpu-nvidia` feature flag.
   [`validation-results/`](validation-results/) for the captured
   evidence.
 - **Attribution** (v0.4): KV-cache hit rate scraped from a
-  Prometheus vLLM-schema endpoint (ADR-011), per-phase energy split
+  Prometheus endpoint (ADR-011), per-phase energy split
   prefill vs decode with the divergence between two apportionments
   as the signal (ADR-012), and per-step attribution across agentic
   trajectories (ADR-013). Per-step energy is measured on an A10
   against vLLM; per-step KV-cache figures are fixture-only so far.
   [`validation-results/`](validation-results/) states the bounds of
   each run.
+- **Multi-engine** (v0.5): SGLang is read alongside vLLM (ADR-014).
+  The two do not expose the same quantity — vLLM counts cache hits
+  truncated to a block boundary, SGLang counts exact tokens at its
+  default page size — so a hit rate now carries the accounting that
+  produced it into the report, and the rendered text says which.
+  The engine is declared with `--engine`, never inferred from the
+  scrape body. Parser and schema selection are validated against
+  fixtures transcribed from SGLang's own collector source and
+  cross-checked against its tests; a live scrape against a running
+  SGLang server needs a GPU and has not been done.
 
 ## What it measures
 
@@ -114,6 +124,39 @@ Process resource usage (21 samples)
 The same run with `--json` produces a single document carrying both
 the raw per-token timestamps and the derived metrics, so a consumer
 can recompute differently without re-running the probe.
+
+When the engine exposes a Prometheus endpoint, inferscope also reads
+its KV-cache counters over the same window. The engine's metric
+vocabulary is declared, not guessed:
+
+```
+$ inferscope \
+    --endpoint http://127.0.0.1:8000 \
+    --model facebook/opt-125m \
+    --prompt "Explain why espresso is served in small cups." \
+    --max-tokens 120 \
+    --metrics-endpoint http://127.0.0.1:8000/metrics \
+    --engine vllm \
+    --metrics-period-ms 300
+
+Probe summary
+  Tokens generated      120
+  Time to first token   303 ms
+  Generation rate       24.7 tokens/s
+  Total latency         5.118 s
+
+KV-cache (prefix cache, probe window):
+  Hit rate           53.3%  (144 / 270 tokens)
+  Accounting         numerator block-aligned, denominator exact: rate is a lower bound
+```
+
+The window is a delta between two scrapes, so a run shorter than two
+scrape periods reports no rate rather than a wrong one, and says which
+of the two it was. The `Accounting` line is why the engine has to be
+declared: vLLM counts hits truncated to a block boundary against an
+exact-token denominator, so its rate is a lower bound, while SGLang at
+its default page size counts both exactly. Use `--engine sglang
+--page-size <n>` there.
 
 Built with `--features otel-export`, inferscope can additionally
 emit the same report as an OpenTelemetry trace via OTLP/HTTP:
@@ -231,6 +274,12 @@ inferscope pins a minimum supported Rust version of 1.85 via
 
 The CLI binary lands at `target/release/inferscope`. Run
 `inferscope --help` for the full argument list.
+
+Two arguments are mandatory rather than defaulted. `--engine` is
+required whenever `--metrics-endpoint` is supplied, and `--page-size`
+is required with `--engine sglang`: neither has a value inferscope
+could assume without asserting something about the caller's engine
+that it cannot read from a scrape.
 
 Optional Cargo features:
 
