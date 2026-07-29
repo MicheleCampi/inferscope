@@ -197,13 +197,13 @@ Stick with the default sample period unless you have a specific reason to change
 ### Diagnosis (2 minutes)
 
 1. Verify NVML headers are installed: `dpkg -l | grep nvidia-ml-dev` on Debian/Ubuntu, or check that `/usr/include/nvml.h` exists. Without these, `nvml-wrapper-sys`'s `bindgen` step cannot run.
-2. Verify the Rust toolchain matches MSRV: `cargo --version` should report 1.83 or later (see `rust-toolchain.toml`).
+2. Verify the Rust toolchain matches MSRV: `cargo --version` should report 1.85 or later (see `rust-toolchain.toml`).
 3. Verify the NVIDIA driver version is recent enough: `nvidia-smi --query-gpu=driver_version --format=csv,noheader`. Driver mismatch with CUDA runtime in headers can fail at build.
 
 ### Fix
 
-- **Headers missing**: `apt-get install libnvidia-ml-dev` (Ubuntu/Debian) or distribution equivalent. The Dockerfile sidesteps this by building inside `rust:1.83-slim` with NVML resolved through the linker against the published `nvml-wrapper-sys` crate.
-- **Wrong toolchain**: install Rust 1.83 via `rustup`. The `rust-toolchain.toml` should auto-resolve this on `cargo` invocations.
+- **Headers missing**: `apt-get install libnvidia-ml-dev` (Ubuntu/Debian) or distribution equivalent. The Dockerfile sidesteps this by building inside `rust:1.85-slim` with NVML resolved through the linker against the published `nvml-wrapper-sys` crate.
+- **Wrong toolchain**: install Rust 1.85 via `rustup`. The `rust-toolchain.toml` should auto-resolve this on `cargo` invocations.
 - **Driver too old**: upgrade the NVIDIA driver to a version compatible with the CUDA runtime used by the build environment.
 
 ### Root cause

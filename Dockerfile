@@ -1,6 +1,6 @@
 # Multi-stage build for inferscope
 # Stage 1: build the Rust binary with gpu-nvidia feature
-FROM rust:1.83-slim AS builder
+FROM rust:1.85-slim AS builder
 WORKDIR /build
 # Install build dependencies
 RUN apt-get update && \

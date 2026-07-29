@@ -265,13 +265,15 @@ Released — see [`CHANGELOG.md`](CHANGELOG.md) for the detail:
   `/proc` resource correlation, text and JSON reports, CLI.
 - **v0.2.x** (May 2026) — NVIDIA GPU sampling via NVML behind the
   `gpu-nvidia` feature flag ([ADR-005](docs/adr/005-gpu-resource-sampling.md)).
-- **v0.3.0** (June 2026) — per-device GPU metrics
+- **v0.3.0** (May 2026) — per-device GPU metrics
   ([ADR-007](docs/adr/007-per-device-gpu-metrics.md)).
 - **v0.4.0** (July 2026) — NVML energy and efficiency (ADR-010),
   KV-cache hit rate from a Prometheus endpoint (ADR-011),
   per-phase energy attribution (ADR-012), per-step trajectory
-  attribution (ADR-013), plus the OTLP export and sample-only mode
-  that had shipped on main but never been tagged.
+  attribution (ADR-013), plus the sample-only mode that had shipped
+  on main but never been tagged. The OTLP export was tagged here too,
+  but did not compile under its own feature; fixed on 2026-07-29 and
+  now covered by an `all-features` CI job.
 
 Not planned: AMD GPU sampling via `amd-smi` was listed here for
 two releases and never started — it is off the roadmap rather

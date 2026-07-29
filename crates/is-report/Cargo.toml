@@ -11,8 +11,9 @@ description = "Report generation for inferscope: renders metrics as structured t
 [features]
 default = []
 # Emit derived metrics as OpenTelemetry spans via OTLP/HTTP.
-# Adds opentelemetry, opentelemetry_sdk, opentelemetry-otlp + reqwest as deps.
-# See docs/adr/008-opentelemetry-export.md for design rationale (when added).
+# Adds opentelemetry, opentelemetry_sdk, opentelemetry-otlp and tokio. The
+# transport is hyper, not reqwest: see docs/adr/008-opentelemetry-export.md.
+# Covered by the all-features CI job; see CONTRIBUTING.md for why.
 otel-export = [
     "dep:opentelemetry",
     "dep:opentelemetry_sdk",

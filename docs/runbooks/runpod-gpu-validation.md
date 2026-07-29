@@ -74,8 +74,8 @@ The pod image does not ship Rust. Install it:
     source $HOME/.cargo/env
     rustc --version
 
-Expected: `rustc 1.83.x` or later. Older versions fail because
-inferscope pins MSRV 1.83 in `rust-toolchain.toml`.
+Expected: `rustc 1.85.x` or later. Older versions fail because
+inferscope pins MSRV 1.85 in `rust-toolchain.toml`.
 
 ## Step 5 — Clone and build inferscope
 

@@ -108,7 +108,7 @@ NVML is accessed via `nvml-wrapper` v0.12.1. All calls are read-only metric quer
 
 ### Dependency hygiene
 
-- **MSRV pinned to Rust 1.83** via `rust-toolchain.toml`. This guarantees reproducible builds across contributor machines and CI.
+- **MSRV pinned to Rust 1.85** via `rust-toolchain.toml`. This guarantees reproducible builds across contributor machines and CI.
 - **`Cargo.lock` is committed**. Direct and transitive dependencies are version-locked.
 - **CI runs on every push** against the locked dependency tree, exercising all 120+ tests under `-D warnings`. Dependency drift surfaces as compilation failure, not silent regression.
 - **`cargo audit` is not yet wired into CI.** This is a known gap; the issue is tracked, and the planned remediation is a `cargo deny check advisories` step in `.github/workflows/ci.yml`.

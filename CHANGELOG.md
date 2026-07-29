@@ -166,6 +166,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   but not the trace, which is a gap in ADR-008's contract rather than a
   regression, and is left for a follow-up to decide deliberately.
 
+- **The MSRV moved on 2026-06-21 and five surfaces never heard.** `6ca675f`
+  took the workspace from Rust 1.83 to 1.85 — rustls 0.23 via hyper-rustls
+  requires it — and updated the toolchain file, `rust-version` and the README
+  badge. RUNBOOK, the RunPod runbook, SECURITY.md, ADR-008 and all five CI
+  jobs kept saying 1.83 for five weeks. Two of those were operative rather
+  than stale: SECURITY.md claimed a pinned 1.83 guaranteed reproducible
+  builds, and the GPU runbook told a reader to expect `rustc 1.83.x` on a paid
+  node, where a 1.83 toolchain would pass the check and then fail the build.
+  The Dockerfile built on `rust:1.83-slim`, which was not broken — rustup
+  honours the pin and fetched 1.85 inside the container, measured, not assumed
+  — but paid a full toolchain download on every build while naming a version
+  it did not run. ADR-008's 1.83 is deliberately left in place and annotated
+  instead: it was the constraint that chose hyper over reqwest, and an ADR
+  records a decision as it was taken.
+
 ## [0.4.0] — 2026-07-25
 
 The OpenTelemetry export and sample-only mode that sat unreleased since

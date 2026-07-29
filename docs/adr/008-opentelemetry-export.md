@@ -3,7 +3,8 @@
 - **Status**: Accepted
 - **Date**: 2026-05-25
 - **Accepted**: 2026-05-25
-- **Implemented in**: v0.4.0 (planned; commits b6e314b..9d0e185 on main, post-v0.3.0)
+- **Implemented in**: v0.4.0 (commits b6e314b..9d0e185 on main, post-v0.3.0)
+- **Superseded in part**: see Postscript, 2026-07-29
 - **Deciders**: Michele Campi
 
 ## Context
@@ -255,3 +256,35 @@ because OTel is a presentation-layer concern (alongside text and
 JSON rendering), and the feature gate keeps the dependency surface
 hidden from default builds. Adding a sixth crate for one function
 is over-fragmentation.
+
+## Postscript — 2026-07-29
+
+Three statements above were true when written and are not true now. They are
+left in place, because an ADR records a decision as it was taken; what changed
+is recorded here.
+
+**The feature shipped broken.** "The feature is shipped to users in v0.4.0" was
+the intent. In fact `otel.rs` stopped compiling under its own feature on
+2026-07-18, when the ADR-013 wall-clock anchor moved two bindings into a match
+branch that the span's end timestamp still referred to from outside, and the
+module's sample report was never given the six fields ADR-011, ADR-012 and
+ADR-013 had added to `Report`. The v0.4.0 tag, cut 2026-07-25, contains that
+code. No CI job built with `--all-features`, so nothing reported it. Fixed
+2026-07-29; CI gained an `all-features` job in the same session.
+
+**The MSRV argument no longer holds.** `hyper-client` was chosen over
+`reqwest-client`, and HTTP over gRPC, because both alternatives required Rust
+1.85 against a workspace MSRV of 1.83. The MSRV moved to 1.85 on 2026-06-21
+(`6ca675f`), when reqwest migrated to rustls-tls and rustls 0.23 via
+hyper-rustls required it. The decision stands on its remaining grounds — a
+smaller dependency footprint and no `tonic` — but the constraint that drove it
+is gone, and a future revisit should not treat the MSRV as an obstacle.
+
+**Exported attributes stop at ADR-010.** "Cluster-level only on the root span"
+and "remain in JSON only for v0.3" describe a report that has since gained
+KV-cache metrics (ADR-011), per-phase energy attribution (ADR-012) and
+per-step trajectory attribution (ADR-013). None of them reach the trace. This
+is a gap in this ADR's contract rather than a regression: the attribute list
+here is closed and was written in May. Extending it is deliberate design work,
+and `trajectory` in particular is per-step and has duration — the case this
+ADR resolved in favour of events precisely because a token arrival does not.
