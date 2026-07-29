@@ -282,6 +282,8 @@ The OTel export is a thin wrapper around opentelemetry-otlp 0.32. It can fail fo
 
 For a local development loop, run Jaeger all-in-one in a long-lived background container and point inferscope at it. For CI and shared environments, terminate TLS at an OTel Collector sidecar and have inferscope talk to it over plain HTTP on the loopback. Document the endpoint and port in the team's runbook so users do not guess.
 
+Before trusting a build with this feature, confirm it compiles: `cargo build --release --features otel-export` is the command the README and this scenario both assume, and it was broken from 2026-07-18 to 2026-07-29 without any CI job noticing, because none built with `--all-features`. CI now carries an `all-features` job for exactly this; see CONTRIBUTING.md.
+
 ---
 
 ## Cross-cutting diagnostics

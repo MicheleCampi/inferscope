@@ -112,6 +112,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   predates this change, so archived evidence under `validation-results/`
   deserializes as measurements taken and a vLLM report is unchanged.
 
+- **CI now builds the optional features, and the pre-flight is written
+  down.** A fifth job runs clippy and the test suite with `--all-
+  features`; the existing four are unchanged, because they are the only
+  ones proving the default build — what `cargo install` and the Docker
+  image produce — stays clean. A new `CONTRIBUTING.md` states both gates
+  and why neither replaces the other. Test totals now depend on the gate
+  that produced them, 244 against 254, and any figure quoted elsewhere has
+  to say which.
+
 ### Fixed
 
 - **The KV-cache hit rate was documented, and rendered, in the wrong unit.**
@@ -132,16 +141,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   referring to them from outside it, and the module's sample report was
   never given the six fields ADR-011, ADR-012 and ADR-013 added to
   `Report`. Three compile errors, in a file that ships in a released
-  crate. Nothing caught it because the CI builds and the documented
-  pre-flight both run without `--all-features`, so the feature had left
-  the verification loop entirely while its own test still read as
-  passing. The span now ends at `run_start + total_latency_ns` as its
-  comment always claimed, degrading to `run_start` on overflow like the
-  token events beside it. The exported attributes are unchanged and
-  still stop at ADR-010: KV-cache, per-phase and trajectory metrics
-  reach the JSON and text reports but not the trace, which is a gap in
-  ADR-008's contract rather than a regression, and is left for a
-  follow-up to decide deliberately.
+  crate. It went unnoticed for eleven days because no CI job and no local
+  habit built with `--all-features`, so the feature had left the
+  verification loop entirely while its own test still read as passing. The
+  README and RUNBOOK meanwhile told users to build with it. The span now
+  ends at `run_start + total_latency_ns` as its comment always claimed,
+  degrading to `run_start` on overflow like the token events beside it.
+  The exported attributes are unchanged and still stop at ADR-010: KV-
+  cache, per-phase and trajectory metrics reach the JSON and text reports
+  but not the trace, which is a gap in ADR-008's contract rather than a
+  regression, and is left for a follow-up to decide deliberately.
 
 ## [0.4.0] — 2026-07-25
 
