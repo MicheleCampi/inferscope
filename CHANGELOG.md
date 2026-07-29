@@ -24,10 +24,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   a scrape body. `Engine::Sglang` carries `page_size` because it decides the
   accounting class there — exact tokens at 1, page-aligned above — while vLLM
   is block-aligned at every block size, which changes the magnitude of the
-  quantization bias but not its class. There is no `--engine` flag yet: the
-  CLI declares vLLM as a constant, and the flag is withheld until `parse.rs`
-  selects series through the schema, so that a caller declaring SGLang cannot
-  be parsed with the `vllm:` vocabulary and handed a plausible wrong number.
+  quantization bias but not its class. The `--engine` flag that declares it
+  is described below; it was withheld until `parse.rs` selected series through
+  the schema, so that a caller declaring SGLang could not be parsed with the
+  `vllm:` vocabulary and handed a plausible wrong number.
 
 - **The engine schema, and a numerator that sums (ADR-014 D1, D4).**
   `is-metrics` now selects its series through an internal `EngineSchema`
@@ -66,6 +66,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   server produces, where the body carries a denominator and no numerator:
   the timeline stays empty, and before this change the report was silent
   about it.
+
+- **`--engine`, and the page size it cannot guess (ADR-014 D6).** The metric
+  vocabulary is now declared on the command line and is mandatory whenever
+  `--metrics-endpoint` is supplied — there is no default, because a body of
+  the wrong vocabulary yields no series, and any tolerant parse would render
+  that absence as zero. `--engine sglang` additionally requires `--page-size`:
+  SGLang does not expose it on `/metrics` and it selects the accounting class,
+  exact tokens at 1 and page-aligned above, resolving to 1 on non-HIP non-MUSA
+  platforms and 64 on HIP with vectorized_5d and on MUSA — no value inferscope
+  could assume without asserting the caller's hardware. Supplying it with
+  `--engine vllm` is an error rather than an ignored argument. Detecting the
+  engine from the scrape body is deliberately not offered; if it is added
+  later it will be a cross-check that errors on mismatch, never a fallback
+  that guesses.
 
 ### Changed
 

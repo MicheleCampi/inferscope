@@ -8,7 +8,8 @@
 
 use std::time::Duration;
 
-use clap::Parser;
+use clap::{Parser, ValueEnum};
+use is_metrics::Engine;
 
 /// Profile an OpenAI-compatible LLM inference engine.
 ///
@@ -60,8 +61,28 @@ pub struct Args {
     /// carries the window hit rate. When unset, no scrape happens and
     /// the KV-cache section is absent. The `--model` value selects the
     /// `model_name` label series.
-    #[arg(long)]
+    #[arg(long, requires = "engine")]
     pub metrics_endpoint: Option<String>,
+    /// Metric vocabulary of the engine behind `--metrics-endpoint`
+    /// (ADR-014 D6). Required whenever an endpoint is scraped, with
+    /// no default: the two vocabularies name different series, and a
+    /// body of the wrong one yields no series rather than a wrong
+    /// number. Auto-detection from the body is deliberately not
+    /// offered — under any tolerant parse it would write absence as
+    /// zero.
+    #[arg(long, value_enum)]
+    pub engine: Option<EngineKind>,
+    /// The SGLang server's `page_size`, as configured at engine start
+    /// (ADR-014 D6). Required with `--engine sglang` and rejected with
+    /// `--engine vllm`. It is not exposed on `/metrics`, so it cannot
+    /// be derived from a scrape, and it selects the hit-rate
+    /// accounting class: exact tokens at 1, page-aligned above.
+    /// SGLang resolves it to 1 on non-HIP, non-MUSA platforms and to
+    /// 64 on HIP with vectorized_5d and on MUSA, so there is no value
+    /// inferscope could default to without asserting the caller's
+    /// hardware.
+    #[arg(long)]
+    pub page_size: Option<u32>,
     /// Scrape period for `--metrics-endpoint`, in milliseconds.
     ///
     /// Defaults to 1000 ms — deliberately slower than the 50 ms
@@ -155,7 +176,45 @@ pub struct Args {
     pub otel_endpoint: Option<String>,
 }
 
+/// The metric vocabulary selected by `--engine` (ADR-014 D6).
+///
+/// Distinct from [`is_metrics::Engine`], which carries SGLang's
+/// `page_size`: the flag names the vocabulary, and the value is
+/// composed with `--page-size` by [`Args::engine`].
+#[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
+pub enum EngineKind {
+    /// vLLM, exposing the `vllm:` vocabulary.
+    Vllm,
+    /// SGLang, exposing the `sglang:` vocabulary.
+    Sglang,
+}
+
 impl Args {
+    /// Resolves `--engine` and `--page-size` into an [`Engine`].
+    ///
+    /// Returns `Ok(None)` when no engine was declared, which clap
+    /// permits only when no metrics endpoint was supplied. Both
+    /// directions of the page-size rule are enforced here rather
+    /// than declaratively: a page size supplied with vLLM is a
+    /// caller error, not a value to absorb silently.
+    pub fn engine(&self) -> Result<Option<Engine>, String> {
+        match (self.engine, self.page_size) {
+            (None, _) => Ok(None),
+            (Some(EngineKind::Vllm), None) => Ok(Some(Engine::Vllm)),
+            (Some(EngineKind::Vllm), Some(_)) => Err(
+                "--page-size applies to --engine sglang only; vLLM's block size \
+                 does not change the hit-rate accounting class"
+                    .to_string(),
+            ),
+            (Some(EngineKind::Sglang), Some(page_size)) => Ok(Some(Engine::Sglang { page_size })),
+            (Some(EngineKind::Sglang), None) => Err(
+                "--engine sglang requires --page-size: it is not exposed on \
+                 /metrics and it selects the hit-rate accounting class"
+                    .to_string(),
+            ),
+        }
+    }
+
     /// Returns the resource sampling period as a `Duration`.
     pub fn sample_period(&self) -> Duration {
         Duration::from_millis(self.sample_period_ms)
@@ -381,6 +440,8 @@ mod tests {
             "http://localhost:8000/metrics",
             "--model",
             "Qwen/Qwen2.5-7B-Instruct",
+            "--engine",
+            "vllm",
         ])
         .expect("sample-only with metrics-endpoint + model should parse");
         assert!(args.sample_only);
@@ -398,5 +459,80 @@ mod tests {
         // --sample-only without --duration-secs must fail (required_if_eq).
         let result = Args::try_parse_from(["inferscope", "--sample-only", "--pid", "4242"]);
         assert!(result.is_err());
+    }
+    #[test]
+    fn engine_is_required_with_a_metrics_endpoint() {
+        // ADR-014 D6: the two vocabularies name different series, so a
+        // scrape without a declared engine is a caller error rather
+        // than a silent default to vLLM.
+        let err = Args::try_parse_from([
+            "inferscope",
+            "--sample-only",
+            "--pid",
+            "1",
+            "--duration-secs",
+            "5",
+            "--metrics-endpoint",
+            "http://localhost:8000/metrics",
+            "--model",
+            "m",
+        ])
+        .expect_err("--metrics-endpoint without --engine should be rejected");
+        assert_eq!(err.kind(), clap::error::ErrorKind::MissingRequiredArgument);
+    }
+    /// Parses a sample-only invocation that scrapes, with the given
+    /// engine flags appended. Keeps the four resolution tests to their
+    /// one differing input.
+    fn engine_resolution(extra: &[&str]) -> Result<Option<Engine>, String> {
+        let mut argv = vec![
+            "inferscope",
+            "--sample-only",
+            "--pid",
+            "1",
+            "--duration-secs",
+            "5",
+            "--metrics-endpoint",
+            "http://localhost:8000/metrics",
+            "--model",
+            "m",
+        ];
+        argv.extend_from_slice(extra);
+        Args::try_parse_from(argv)
+            .expect("clap should accept these arguments")
+            .engine()
+    }
+
+    #[test]
+    fn vllm_resolves_without_a_page_size() {
+        assert_eq!(
+            engine_resolution(&["--engine", "vllm"]),
+            Ok(Some(Engine::Vllm))
+        );
+    }
+
+    #[test]
+    fn sglang_carries_the_declared_page_size() {
+        // The value is not derivable from a scrape and selects the
+        // accounting class, so it travels into the type (ADR-014 D6).
+        assert_eq!(
+            engine_resolution(&["--engine", "sglang", "--page-size", "16"]),
+            Ok(Some(Engine::Sglang { page_size: 16 }))
+        );
+    }
+
+    #[test]
+    fn sglang_without_a_page_size_is_an_error() {
+        let err = engine_resolution(&["--engine", "sglang"])
+            .expect_err("sglang without --page-size should not resolve");
+        assert!(err.contains("--page-size"), "{err}");
+    }
+
+    #[test]
+    fn a_page_size_supplied_with_vllm_is_an_error() {
+        // Absorbing it silently would be an input that does not apply,
+        // accepted anyway — the failure mode D6 exists to prevent.
+        let err = engine_resolution(&["--engine", "vllm", "--page-size", "16"])
+            .expect_err("--page-size with vLLM should not resolve");
+        assert!(err.contains("sglang"), "{err}");
     }
 }

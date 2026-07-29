@@ -30,16 +30,18 @@ use is_sysmon::{sample_gpu_during, GpuSampler};
 
 use crate::cli::Args;
 
-/// The engine whose metric vocabulary the scrape assumes.
-///
-/// Hardcoded pending the `--engine` flag of ADR-014 D6. The flag is
-/// withheld until `parse.rs` selects series through the schema: until
-/// then a caller declaring SGLang would be parsed with the `vllm:`
-/// vocabulary and get a plausible, wrong number rather than an error.
-const ENGINE: Engine = Engine::Vllm;
-
 fn main() -> ExitCode {
     let args = Args::parse();
+    // Resolve the metric vocabulary before anything else (ADR-014 D6).
+    // clap guarantees --engine is present whenever --metrics-endpoint
+    // is, so a None here means no scrape will be attempted.
+    let engine = match args.engine() {
+        Ok(engine) => engine,
+        Err(message) => {
+            eprintln!("inferscope: {message}");
+            return ExitCode::FAILURE;
+        }
+    };
 
     // Build a multi-threaded tokio runtime so the probe (network
     // I/O), the sysmon (filesystem I/O on /proc), and the optional
@@ -56,7 +58,7 @@ fn main() -> ExitCode {
         }
     };
 
-    match runtime.block_on(orchestrate(args)) {
+    match runtime.block_on(orchestrate(args, engine)) {
         Ok(()) => ExitCode::SUCCESS,
         Err(e) => {
             eprintln!("inferscope: {e}");
@@ -68,7 +70,7 @@ fn main() -> ExitCode {
 /// Runs one probe (plus optional sysmon and GPU sampler), builds
 /// the report, and writes it to stdout. Returns a friendly error
 /// string on failure.
-async fn orchestrate(args: Args) -> Result<(), String> {
+async fn orchestrate(args: Args, engine: Option<Engine>) -> Result<(), String> {
     // The single reference instant shared between the probe, the
     // /proc sampler, and the GPU sampler, per ADR-003 and ADR-005.
     // Captured before any task starts so all three produce
@@ -101,7 +103,7 @@ async fn orchestrate(args: Args) -> Result<(), String> {
     // Sample-only mode returns here: no probe, just resource sampling
     // for a fixed duration while an external load generator drives traffic.
     if args.sample_only {
-        return run_sample_only(&args, start, reference_instant_unix_ns).await;
+        return run_sample_only(&args, engine, start, reference_instant_unix_ns).await;
     }
 
     // In the normal (non sample-only) path, clap guarantees endpoint,
@@ -165,17 +167,21 @@ async fn orchestrate(args: Args) -> Result<(), String> {
     // shares `start` with the other samplers so its samples sit on the
     // same elapsed_ns clock (ADR-003). The --model value selects the
     // model_name label series.
-    let metrics_handle = match (args.metrics_endpoint.as_deref(), args.model.as_deref()) {
-        (Some(endpoint), Some(model)) => {
+    let metrics_handle = match (
+        args.metrics_endpoint.as_deref(),
+        args.model.as_deref(),
+        engine,
+    ) {
+        (Some(endpoint), Some(model), Some(engine)) => {
             // Both scrapes hit the same /metrics endpoint over the
             // same run window, sharing `start` and each its own cancel
             // (ADR-012). They are separate loops, not one GET split two
             // ways: KV hit-rate and phase energy are independent
             // first/last reductions, and keeping them separate leaves
             // the ADR-011 KV path untouched.
-            let kv_cfg = MetricsConfig::with_period(endpoint, model, ENGINE, args.metrics_period());
+            let kv_cfg = MetricsConfig::with_period(endpoint, model, engine, args.metrics_period());
             let phase_cfg =
-                MetricsConfig::with_period(endpoint, model, ENGINE, args.metrics_period());
+                MetricsConfig::with_period(endpoint, model, engine, args.metrics_period());
             let (kv_cancel, kv_rx) = oneshot::channel();
             let (phase_cancel, phase_rx) = oneshot::channel();
             let kv_task = tokio::spawn(scrape_during(kv_cfg, start, kv_rx));
@@ -386,6 +392,7 @@ fn read_steps(path: &std::path::Path) -> Result<Vec<is_report::StepRecord>, Stri
 
 async fn run_sample_only(
     args: &Args,
+    engine: Option<Engine>,
     start: Instant,
     reference_instant_unix_ns: Option<u64>,
 ) -> Result<(), String> {
@@ -431,9 +438,13 @@ async fn run_sample_only(
     // is an HTTP read of the engine's Prometheus endpoint, not NVML.
     // It shares `start` with the samplers and is cancelled by the
     // same timer below (ADR-003).
-    let phase_handle = match (args.metrics_endpoint.as_deref(), args.model.as_deref()) {
-        (Some(endpoint), Some(model)) => {
-            let cfg = MetricsConfig::with_period(endpoint, model, ENGINE, args.metrics_period());
+    let phase_handle = match (
+        args.metrics_endpoint.as_deref(),
+        args.model.as_deref(),
+        engine,
+    ) {
+        (Some(endpoint), Some(model), Some(engine)) => {
+            let cfg = MetricsConfig::with_period(endpoint, model, engine, args.metrics_period());
             let (cancel_tx, cancel_rx) = oneshot::channel();
             let task = tokio::spawn(scrape_phase_during(cfg, start, cancel_rx));
             Some((task, cancel_tx))
