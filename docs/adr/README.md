@@ -27,6 +27,7 @@ left intact as a historical record.
 | [ADR-012](012-per-phase-energy-attribution.md) | Per-Phase Energy Attribution (Prefill vs Decode) | Accepted |
 | [ADR-013](013-trajectory-level-attribution.md) | Trajectory-Level Energy and Cache Attribution for Agentic Workloads | Accepted |
 | [ADR-014](014-multi-engine-metric-schema.md) | Multi-Engine Metric Schema (vLLM + SGLang) | Accepted |
+| [ADR-015](015-cost-attribution-per-step.md) | Cost Attribution per Trajectory Step | Proposed |
 
 ## Format
 
