@@ -8,7 +8,7 @@
 
 use std::time::Duration;
 
-use clap::{Parser, ValueEnum};
+use clap::{Parser, Subcommand, ValueEnum};
 use is_metrics::Engine;
 
 /// Profile an OpenAI-compatible LLM inference engine.
@@ -21,6 +21,11 @@ use is_metrics::Engine;
 /// document carrying both the raw signals and derived metrics.
 #[derive(Debug, Parser)]
 #[command(version, about, long_about = None)]
+// A subcommand is a different mode of operation, not a variant of a
+// run: when one is present the run flags do not apply and must stop
+// being required. Verified against clap 4.5.20: without this, every
+// subcommand invocation fails on the run-level requirements.
+#[command(subcommand_negates_reqs = true)]
 pub struct Args {
     /// Base URL of the engine's OpenAI-compatible API.
     ///
@@ -174,6 +179,13 @@ pub struct Args {
     #[cfg(feature = "otel-export")]
     #[arg(long, env = "OTEL_EXPORTER_OTLP_ENDPOINT")]
     pub otel_endpoint: Option<String>,
+
+    /// Optional mode that is not a profiling run.
+    ///
+    /// When present, every run flag above is inert: `main` branches
+    /// here before resolving anything else.
+    #[command(subcommand)]
+    pub command: Option<Commands>,
 }
 
 /// The metric vocabulary selected by `--engine` (ADR-014 D6).
@@ -534,5 +546,234 @@ mod tests {
         let err = engine_resolution(&["--engine", "vllm", "--page-size", "16"])
             .expect_err("--page-size with vLLM should not resolve");
         assert!(err.contains("sglang"), "{err}");
+    }
+}
+
+/// Modes that are not a profiling run.
+#[derive(Debug, Subcommand)]
+pub enum Commands {
+    /// Derive cost from an archived report at a declared rate.
+    ///
+    /// Reads measurements the report already carries and multiplies
+    /// them by a rate supplied here. Nothing is measured, nothing is
+    /// written back: cost stays outside the report by construction
+    /// (ADR-015 D1), and the same report can be priced again later at
+    /// a different rate without repeating the run.
+    Cost {
+        /// Path to a JSON report produced by a previous run.
+        #[arg(long)]
+        report: std::path::PathBuf,
+        /// Declared price of the whole node, per hour. Occupancy
+        /// basis: energy is already inside this price.
+        #[arg(long, required_unless_present = "usd_per_kwh")]
+        usd_per_hour: Option<f64>,
+        /// Declared electricity price, per kilowatt-hour. Energy
+        /// basis: for owned hardware, metered separately.
+        ///
+        /// Mutually exclusive with the hourly rate. One basis per
+        /// derivation (ADR-015 D2): the two answer different
+        /// questions and summing them would double-count on a rented
+        /// node. To obtain both, invoke twice.
+        #[arg(long, conflicts_with = "usd_per_hour")]
+        usd_per_kwh: Option<f64>,
+    },
+}
+
+/// Every run-level flag, by clap id.
+///
+/// Listed explicitly rather than derived: a flag added later should
+/// force a decision about whether it belongs here, and a silent
+/// omission is exactly the failure this guard exists to prevent.
+const RUN_FLAG_IDS: &[&str] = &[
+    "endpoint",
+    "model",
+    "prompt",
+    "max_tokens",
+    "pid",
+    "sample_period_ms",
+    "metrics_endpoint",
+    "engine",
+    "page_size",
+    "metrics_period_ms",
+    "steps_file",
+    "include_descendants",
+    "sample_only",
+    "duration_secs",
+    "json",
+];
+
+/// Run-level flags that exist only under a Cargo feature.
+///
+/// Interrogating an id clap does not know panics in debug builds, so
+/// these are kept apart rather than listed unconditionally.
+const FEATURE_RUN_FLAG_IDS: &[&str] = &[
+    #[cfg(feature = "gpu-nvidia")]
+    "gpu",
+    #[cfg(feature = "otel-export")]
+    "otel_endpoint",
+];
+
+/// Parses arguments, rejecting an invocation that asks for both a run
+/// and a subcommand.
+///
+/// `subcommand_negates_reqs` makes the run flags optional, which also
+/// makes them silently accepted alongside a subcommand. A caller who
+/// appends `cost ...` to a variable already holding run flags would
+/// get a cost derivation and no run, with nothing said about the
+/// flags that were dropped. Provenance from `value_source`
+/// distinguishes a flag that was written from one left at its
+/// default, which a bool at `false` cannot.
+pub fn parse_checked() -> Result<Args, String> {
+    parse_checked_from(std::env::args_os())
+}
+
+/// The checked parse, over an explicit argument vector.
+///
+/// Split out from [`parse_checked`] so the guard is exercised in CI
+/// rather than only by hand at a terminal.
+pub fn parse_checked_from<I, T>(argv: I) -> Result<Args, String>
+where
+    I: IntoIterator<Item = T>,
+    T: Into<std::ffi::OsString> + Clone,
+{
+    use clap::{parser::ValueSource, CommandFactory, FromArgMatches};
+
+    let matches = Args::command()
+        .try_get_matches_from(argv)
+        .map_err(|e| e.to_string())?;
+    let args = Args::from_arg_matches(&matches).map_err(|e| e.to_string())?;
+
+    if args.command.is_some() {
+        // `EnvVariable` is deliberately not a conflict: an exported
+        // OTLP endpoint is ambient configuration, not a run asked for
+        // on this command line.
+        let given: Vec<&str> = RUN_FLAG_IDS
+            .iter()
+            .chain(FEATURE_RUN_FLAG_IDS.iter())
+            .copied()
+            .filter(|id| matches.value_source(id) == Some(ValueSource::CommandLine))
+            .collect();
+        if !given.is_empty() {
+            let flags: Vec<String> = given
+                .iter()
+                .map(|id| format!("--{}", id.replace('_', "-")))
+                .collect();
+            return Err(format!(
+                "a subcommand does not take run flags, but {} {} given. \
+                 The subcommand would have run and {} would have been \
+                 ignored; drop one of the two.",
+                flags.join(", "),
+                if flags.len() == 1 { "was" } else { "were" },
+                if flags.len() == 1 {
+                    "the flag"
+                } else {
+                    "the flags"
+                }
+            ));
+        }
+    }
+    Ok(args)
+}
+
+#[cfg(test)]
+mod guard_tests {
+    use super::*;
+    use clap::CommandFactory;
+
+    #[test]
+    fn a_subcommand_next_to_run_flags_is_rejected() {
+        let err = parse_checked_from([
+            "inferscope",
+            "--sample-only",
+            "--duration-secs",
+            "30",
+            "--pid",
+            "1",
+            "cost",
+            "--report",
+            "r.json",
+            "--usd-per-hour",
+            "1.5",
+        ])
+        .unwrap_err();
+        // Every offending flag is named: a caller who dropped one
+        // would otherwise rediscover the next on the following run.
+        assert!(err.contains("--sample-only"), "{err}");
+        assert!(err.contains("--duration-secs"), "{err}");
+        assert!(err.contains("--pid"), "{err}");
+        assert!(err.contains("were given"), "{err}");
+    }
+
+    #[test]
+    fn one_offending_flag_reads_as_singular() {
+        let err = parse_checked_from([
+            "inferscope",
+            "--max-tokens",
+            "64",
+            "cost",
+            "--report",
+            "r.json",
+            "--usd-per-hour",
+            "1.5",
+        ])
+        .unwrap_err();
+        assert!(err.contains("--max-tokens was given"), "{err}");
+    }
+
+    #[test]
+    fn a_clean_subcommand_parses() {
+        let args = parse_checked_from([
+            "inferscope",
+            "cost",
+            "--report",
+            "r.json",
+            "--usd-per-hour",
+            "1.5",
+        ])
+        .unwrap();
+        assert!(args.command.is_some());
+    }
+
+    #[test]
+    fn a_clean_run_still_parses() {
+        let args = parse_checked_from([
+            "inferscope",
+            "--endpoint",
+            "http://localhost:8000",
+            "--model",
+            "m",
+            "--prompt",
+            "p",
+        ])
+        .unwrap();
+        assert!(args.command.is_none());
+        assert_eq!(args.model.as_deref(), Some("m"));
+    }
+
+    #[test]
+    fn run_flag_ids_covers_every_top_level_flag() {
+        // A flag added to `Args` without being listed would be
+        // silently accepted next to a subcommand, which is the exact
+        // failure the guard exists to prevent.
+        let cmd = Args::command();
+        let actual: Vec<String> = cmd
+            .get_arguments()
+            .map(|a| a.get_id().to_string())
+            .filter(|id| id != "help" && id != "version")
+            .collect();
+        let known = |id: &str| RUN_FLAG_IDS.contains(&id) || FEATURE_RUN_FLAG_IDS.contains(&id);
+        let mut missing: Vec<&String> = actual.iter().filter(|id| !known(id)).collect();
+        missing.sort();
+        assert!(
+            missing.is_empty(),
+            "not listed in RUN_FLAG_IDS: {missing:?}"
+        );
+
+        let stale: Vec<&&str> = RUN_FLAG_IDS
+            .iter()
+            .chain(FEATURE_RUN_FLAG_IDS.iter())
+            .filter(|id| !actual.iter().any(|a| a == *id))
+            .collect();
+        assert!(stale.is_empty(), "listed but no longer a flag: {stale:?}");
     }
 }

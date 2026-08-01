@@ -11,15 +11,15 @@ mod cli;
 use std::process::ExitCode;
 use std::time::{Duration, Instant};
 
-use clap::Parser;
 use tokio::sync::oneshot;
 
 use is_metrics::{scrape_during, scrape_phase_during, Engine, MetricsConfig};
 
 use is_probe::{config::ProbeConfig, runner::run as run_probe};
 use is_report::{
-    derive_efficiency, derive_gpu, derive_kvcache, derive_phase_energy, derive_resource,
-    derive_timing, render_json, render_resource_json, render_text, Report, ResourceReport,
+    derive_cost, derive_efficiency, derive_gpu, derive_kvcache, derive_phase_energy,
+    derive_resource, derive_timing, render_json, render_resource_json, render_text, CostBasis,
+    Report, ResourceReport, TrajectoryCost,
 };
 use is_sysmon::{config::SysmonConfig, sampler::sample_during};
 
@@ -28,10 +28,26 @@ use is_core::GpuTimeline;
 #[cfg(feature = "gpu-nvidia")]
 use is_sysmon::{sample_gpu_during, GpuSampler};
 
-use crate::cli::Args;
+use crate::cli::{Args, Commands};
 
 fn main() -> ExitCode {
-    let args = Args::parse();
+    let args = match cli::parse_checked() {
+        Ok(args) => args,
+        Err(message) => {
+            eprintln!("inferscope: {message}");
+            return ExitCode::from(2);
+        }
+    };
+
+    // Modes that are not a run branch here, before the engine
+    // vocabulary is resolved and before a runtime is built: deriving
+    // cost reads a file and multiplies, it needs neither. Branching
+    // first is also what keeps the run flags inert, since
+    // `subcommand_negates_reqs` lets a subcommand coexist with them
+    // on the command line without making them meaningful.
+    if let Some(command) = args.command.as_ref() {
+        return run_command(command);
+    }
     // Resolve the metric vocabulary before anything else (ADR-014 D6).
     // clap guarantees --engine is present whenever --metrics-endpoint
     // is, so a None here means no scrape will be attempted.
@@ -106,10 +122,12 @@ async fn orchestrate(args: Args, engine: Option<Engine>) -> Result<(), String> {
         return run_sample_only(&args, engine, start, reference_instant_unix_ns).await;
     }
 
-    // In the normal (non sample-only) path, clap guarantees endpoint,
-    // model, and prompt are present via `required_unless_present =
-    // "sample_only"`. The sample-only path returns earlier (above) and
-    // never reaches here, so these unwraps cannot fire.
+    // In the normal path, clap guarantees endpoint, model, and prompt
+    // are present via `required_unless_present = "sample_only"`. Two
+    // paths relax that requirement and both return before this point:
+    // sample-only just above, and any subcommand in `main` before the
+    // runtime is built (`subcommand_negates_reqs`). So these unwraps
+    // cannot fire.
     let probe_cfg = ProbeConfig::new(
         args.endpoint
             .clone()
@@ -541,4 +559,287 @@ async fn run_sample_only(
     let json = render_resource_json(&report).map_err(|e| format!("json render failed: {e}"))?;
     println!("{json}");
     Ok(())
+}
+
+/// Runs a mode that is not a profiling run.
+///
+/// Synchronous by construction: nothing here touches the network,
+/// the clock or /proc.
+fn run_command(command: &Commands) -> ExitCode {
+    match command {
+        Commands::Cost {
+            report,
+            usd_per_hour,
+            usd_per_kwh,
+        } => match derive_cost_from_report(report, *usd_per_hour, *usd_per_kwh) {
+            Ok(text) => {
+                print!("{text}");
+                ExitCode::SUCCESS
+            }
+            Err(message) => {
+                eprintln!("inferscope: {message}");
+                ExitCode::FAILURE
+            }
+        },
+    }
+}
+
+/// Validates a declared rate.
+///
+/// clap parses the float; it does not constrain its domain. A
+/// negative or non-finite rate would multiply through `derive_cost`
+/// and produce a figure that looks like a price.
+fn checked_rate(value: f64, flag: &str) -> Result<f64, String> {
+    if !value.is_finite() {
+        return Err(format!("{flag} must be a finite number, got {value}"));
+    }
+    if value <= 0.0 {
+        return Err(format!("{flag} must be greater than zero, got {value}"));
+    }
+    Ok(value)
+}
+
+/// Reads an archived report, derives cost at the declared rate, and
+/// renders it.
+///
+/// The report is never written back: cost lives outside the
+/// serialized artifact (ADR-015 D1).
+fn derive_cost_from_report(
+    path: &std::path::Path,
+    usd_per_hour: Option<f64>,
+    usd_per_kwh: Option<f64>,
+) -> Result<String, String> {
+    // clap guarantees exactly one is present: the two conflict, and
+    // one is required unless the other is given.
+    let basis = match (usd_per_hour, usd_per_kwh) {
+        (Some(rate), None) => CostBasis::Occupancy {
+            usd_per_hour: checked_rate(rate, "--usd-per-hour")?,
+        },
+        (None, Some(rate)) => CostBasis::Energy {
+            usd_per_kwh: checked_rate(rate, "--usd-per-kwh")?,
+        },
+        _ => return Err("exactly one rate must be given".to_string()),
+    };
+
+    let raw = std::fs::read_to_string(path)
+        .map_err(|e| format!("cannot read report {}: {e}", path.display()))?;
+    let report: ResourceReport = serde_json::from_str(&raw)
+        .map_err(|e| format!("cannot parse report {}: {e}", path.display()))?;
+
+    // Three outcomes, kept distinct. A report with no trajectory
+    // section and a trajectory that cannot be priced are different
+    // facts, and neither is a cost of zero.
+    let Some(trajectory) = report.trajectory.as_ref() else {
+        return Err(format!(
+            "report {} carries no trajectory section: cost is defined \
+             per trajectory step (ADR-015), so there is nothing to price. \
+             Re-run with --steps-file to produce one.",
+            path.display()
+        ));
+    };
+    let Some(cost) = derive_cost(trajectory, basis) else {
+        return Err(format!(
+            "report {} carries a trajectory but no quantity this basis \
+             can price: the run duration or the measured energy is zero. \
+             A report written before ADR-015 deserializes to a zero run \
+             duration and is withheld rather than priced at zero.",
+            path.display()
+        ));
+    };
+    Ok(render_cost(&cost))
+}
+
+/// Renders a derived cost as text.
+///
+/// The basis and its rate appear in the header and again on the
+/// whole-run line, which is the line most likely to be quoted on its
+/// own. A dollar figure without the rate that produced it is not a
+/// measurement of anything.
+fn render_cost(cost: &TrajectoryCost) -> String {
+    let (basis_label, rate_label) = match cost.basis {
+        CostBasis::Occupancy { usd_per_hour } => (
+            "occupancy (node rented by wall-clock time; energy already priced in)",
+            format!("${usd_per_hour:.4}/hour"),
+        ),
+        CostBasis::Energy { usd_per_kwh } => (
+            "energy (hardware owned; electricity metered separately)",
+            format!("${usd_per_kwh:.4}/kWh"),
+        ),
+    };
+
+    let mut out = String::new();
+    out.push_str("=== cost attribution (derived, not measured) ===\n");
+    out.push_str(&format!("basis:            {basis_label}\n"));
+    out.push_str(&format!("declared rate:    {rate_label}\n"));
+    out.push('\n');
+    out.push_str(&format!(
+        "run window:       ${:.6} at {rate_label}\n",
+        cost.run_usd
+    ));
+    out.push_str(&format!("  attributed:     ${:.6}\n", cost.attributed_usd));
+    out.push_str(&format!(
+        "  unattributed:   ${:.6} ({:.1}% of run)\n",
+        cost.unattributed_usd,
+        if cost.run_usd > 0.0 {
+            100.0 * cost.unattributed_usd / cost.run_usd
+        } else {
+            0.0
+        }
+    ));
+    match cost.trajectory_usd_per_million_tokens {
+        Some(v) => out.push_str(&format!(
+            "per M gen tokens: ${v:.4} at {rate_label} (over the whole run window)\n"
+        )),
+        None => out.push_str("per M gen tokens: withheld (no generation tokens in this run)\n"),
+    }
+
+    out.push_str(&format!(
+        "\nper-step ({} steps, at {rate_label}):\n",
+        cost.steps.len()
+    ));
+    for step in &cost.steps {
+        let per_m = match step.usd_per_million_tokens {
+            Some(v) => format!("${v:.4}/Mtok"),
+            None => "-".to_string(),
+        };
+        // Width applies to the rendered name, not to the nested
+        // format!: `{:<6}` on a format! argument pads nothing.
+        let kind = format!("{:?}", step.kind).to_lowercase();
+        out.push_str(&format!(
+            "  step {:>4}  {kind:<8}  ${:.6}  {per_m}\n",
+            step.step_id, step.usd
+        ));
+    }
+    out.push_str(
+        "\nSingle-tenant profiling run. The run window is not the invoice:\n\
+         provisioning, model load and post-run idle are billed and are not\n\
+         in it (ADR-015 D7).\n",
+    );
+    out
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use is_report::{StepKind, StepMetrics, TrajectoryMetrics};
+
+    /// A trajectory with one LLM step and one tool step, priced by
+    /// occupancy. Figures are shaped to be checkable by hand: a run
+    /// window of 3600s at $1/hour is exactly $1.
+    fn trajectory() -> TrajectoryMetrics {
+        TrajectoryMetrics {
+            steps: vec![
+                StepMetrics {
+                    step_id: 1,
+                    kind: StepKind::LlmCall,
+                    start_elapsed_ns: 0,
+                    end_elapsed_ns: 1_800_000_000_000,
+                    samples_in_window: 10,
+                    energy_mj: 500_000,
+                    generation_tokens_delta: Some(1_000),
+                    prompt_tokens_delta: Some(50),
+                    cache_hits_delta: None,
+                    cache_queries_delta: None,
+                    // 1_000 tokens over 500_000 mJ = 500 J.
+                    tokens_per_joule: Some(2.0),
+                    cache_hit_rate: None,
+                },
+                StepMetrics {
+                    step_id: 2,
+                    kind: StepKind::Tool,
+                    start_elapsed_ns: 1_800_000_000_000,
+                    end_elapsed_ns: 2_700_000_000_000,
+                    samples_in_window: 5,
+                    energy_mj: 100_000,
+                    generation_tokens_delta: None,
+                    prompt_tokens_delta: None,
+                    cache_hits_delta: None,
+                    cache_queries_delta: None,
+                    // A tool step produces no tokens: absence, not zero.
+                    tokens_per_joule: None,
+                    cache_hit_rate: None,
+                },
+            ],
+            total_energy_mj: 700_000,
+            total_generation_tokens: 1_000,
+            trajectory_tokens_per_joule: Some(1.428_571_4),
+            llm_energy_mj: 500_000,
+            tool_energy_mj: 100_000,
+            unattributed_energy_mj: 100_000,
+            run_duration_ns: 3_600_000_000_000,
+            unattributed_duration_ns: 900_000_000_000,
+            dropped_steps: vec![],
+        }
+    }
+
+    fn report_with(trajectory: Option<TrajectoryMetrics>) -> ResourceReport {
+        ResourceReport {
+            reference_instant_unix_ns: None,
+            pid: 1,
+            include_descendants: false,
+            sample_period_ms: 100,
+            duration_secs: 3600,
+            resource: None,
+            gpu: None,
+            phase_timeline: None,
+            phase_energy: None,
+            trajectory,
+            schema_version: None,
+        }
+    }
+
+    fn write(report: &ResourceReport) -> (tempfile::TempDir, std::path::PathBuf) {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("report.json");
+        std::fs::write(&path, render_resource_json(report).unwrap()).unwrap();
+        (dir, path)
+    }
+
+    #[test]
+    fn cost_round_trips_through_a_serialized_report() {
+        let (_dir, path) = write(&report_with(Some(trajectory())));
+        let out = derive_cost_from_report(&path, Some(1.0), None).unwrap();
+
+        // The whole point of the subcommand: the rate travels with
+        // the figure, on the line most likely to be quoted alone.
+        assert!(out.contains("$1.0000/hour"), "{out}");
+        assert!(
+            out.contains("run window:       $1.000000 at $1.0000/hour"),
+            "{out}"
+        );
+        // 900s of 3600s is outside every kept step window.
+        assert!(out.contains("$0.250000 (25.0% of run)"), "{out}");
+        assert!(out.contains("derived, not measured"), "{out}");
+        assert!(out.contains("step    1  llmcall"), "{out}");
+        assert!(out.contains("step    2  tool"), "{out}");
+    }
+
+    #[test]
+    fn cost_is_withheld_for_a_report_predating_adr_015() {
+        // `run_duration_ns` has serde(default), so a report written
+        // before ADR-015 deserializes to zero. Zero duration is
+        // absence of the measurement, not a run that cost nothing.
+        let mut pre = trajectory();
+        pre.run_duration_ns = 0;
+        let (_dir, path) = write(&report_with(Some(pre)));
+        let err = derive_cost_from_report(&path, Some(1.0), None).unwrap_err();
+        assert!(err.contains("withheld rather than priced at zero"), "{err}");
+    }
+
+    #[test]
+    fn cost_names_the_missing_section_when_there_is_no_trajectory() {
+        let (_dir, path) = write(&report_with(None));
+        let err = derive_cost_from_report(&path, Some(1.0), None).unwrap_err();
+        assert!(err.contains("no trajectory section"), "{err}");
+        assert!(err.contains("--steps-file"), "{err}");
+    }
+
+    #[test]
+    fn a_rate_outside_its_domain_is_rejected_before_it_multiplies() {
+        let (_dir, path) = write(&report_with(Some(trajectory())));
+        for bad in [0.0, -1.0, f64::NAN, f64::INFINITY] {
+            let err = derive_cost_from_report(&path, Some(bad), None).unwrap_err();
+            assert!(err.contains("--usd-per-hour"), "{bad}: {err}");
+        }
+    }
 }

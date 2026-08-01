@@ -30,3 +30,8 @@ gpu-amd = ["is-sysmon/gpu-amd"]
 # Forward the otel-export feature to is-report. Adds the
 # --otel-endpoint CLI flag and the post-render export call.
 otel-export = ["is-report/otel-export"]
+
+[dev-dependencies]
+# Temporary directories for the cost subcommand round-trip tests.
+# Exact pin, matching the wiremock convention in the other crates.
+tempfile = "=3.27.0"
