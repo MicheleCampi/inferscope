@@ -1,6 +1,6 @@
 # ADR-015: Cost Attribution per Trajectory Step
 
-- **Status**: Proposed
+- **Status**: Accepted
 - **Date**: 2026-08-01
 - **Supersedes**: none
 - **Related**: ADR-010 (energy), ADR-012 (per-phase), ADR-013 (trajectory), ADR-014 (schema provenance)
@@ -249,3 +249,45 @@ trajectory step, and would have to duplicate ADR-013 before it could
 price one. The hourly rate is not an argument for the operator either,
 since it is declared configuration in both places. Acting on cost is a
 separate decision, and belongs in a separate ADR on that side.
+
+## Postscript 2026-08-01: rates travel inside `CostBasis`
+
+The D2 snippet above shows `CostBasis` as a payload-free enum, with
+rates arriving separately per D3. The implementation carries the rate
+inside the variant instead:
+
+```rust
+pub enum CostBasis {
+    Occupancy { usd_per_hour: f64 },
+    Energy { usd_per_kwh: f64 },
+}
+```
+
+The two bases take rates in different units. Keeping them outside the
+enum admits two states the design does not want: a basis whose rate is
+missing, and a pair where both rates are supplied and one is ignored.
+Neither is reachable once the rate is a field of the variant, and D3's
+requirement that a figure never be separable from the assumption
+behind it is enforced by the type rather than by convention.
+
+This narrows D2 and D3; it does not reverse them. There is still one
+basis per derivation, still no default, and still no price list in the
+crate.
+
+Two further points settled during implementation, recorded here
+because a reader of the decision would otherwise have to infer them:
+
+- **`run_duration_ns` is the node's span, not a per-device window.**
+  On a multi-device node the timeline's first and last samples belong
+  to one device, so the run span exceeds each device's own integration
+  window by a fraction of a sample tick. This is intended under D4:
+  occupancy is paid for the node, not for the union of per-device
+  windows.
+- **A pre-ADR-015 report prices as absent, not as free.** The two new
+  fields carry `serde(default)`, so an archived report deserializes
+  with `run_duration_ns == 0`. `derive_cost` withholds on the
+  occupancy basis in that case rather than returning a zero cost,
+  under the same rule as D6.
+
+Implemented in `crates/is-report/src/cost.rs`. No dollar figure has
+been measured; the validity domain in D7 is unchanged.
