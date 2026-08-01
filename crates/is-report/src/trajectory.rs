@@ -285,6 +285,23 @@ pub struct TrajectoryMetrics {
     pub tool_energy_mj: u64,
     /// Run energy not inside any kept step window.
     pub unattributed_energy_mj: u64,
+    /// Wall-clock span of the run window in nanoseconds: the interval
+    /// covered by the GPU timeline, which is the same interval the
+    /// energy integration runs over (ADR-015 D4). On a multi-device
+    /// node the first and last samples belong to one device, so this
+    /// span exceeds each single device's own integration window by a
+    /// fraction of a sample tick; that is intended, since occupancy is
+    /// paid for the node and not for the union of per-device windows.
+    #[serde(default)]
+    pub run_duration_ns: u64,
+    /// Run time not inside any kept step window (ADR-015 D5).
+    /// `run_duration_ns` minus the summed kept-step durations,
+    /// computed independently of `unattributed_energy_mj`: a segment
+    /// straddling a step boundary leaves the energy attribution, but
+    /// the step's time is tiled whole. The two residuals are
+    /// different numbers and neither may be derived from the other.
+    #[serde(default)]
+    pub unattributed_duration_ns: u64,
     /// Steps excluded from attribution, with reasons (ADR-013).
     pub dropped_steps: Vec<DroppedStep>,
 }
@@ -557,6 +574,16 @@ pub fn derive_trajectory_from_timelines(
     } else {
         Some(total_generation_tokens as f64 / (total_energy_mj as f64 / 1000.0))
     };
+    let run_duration_ns = run_end.saturating_sub(run_start);
+    // Safe by construction: kept windows are disjoint and lie inside
+    // [run_start, run_end], so the summed step durations cannot exceed
+    // the run span. saturating_sub documents the intent; the
+    // reconciliation itself is asserted in tests.
+    let attributed_duration_ns: u64 = step_metrics
+        .iter()
+        .map(|s| s.end_elapsed_ns.saturating_sub(s.start_elapsed_ns))
+        .sum();
+    let unattributed_duration_ns = run_duration_ns.saturating_sub(attributed_duration_ns);
 
     Some(TrajectoryMetrics {
         steps: step_metrics,
@@ -566,6 +593,8 @@ pub fn derive_trajectory_from_timelines(
         llm_energy_mj,
         tool_energy_mj,
         unattributed_energy_mj,
+        run_duration_ns,
+        unattributed_duration_ns,
         dropped_steps,
     })
 }
@@ -661,6 +690,60 @@ mod derive_tests {
             t_start_unix_ns: ANCHOR + start_ns,
             t_end_unix_ns: ANCHOR + end_ns,
         }
+    }
+
+    #[test]
+    fn run_duration_is_the_gpu_timeline_span() {
+        let report = synthetic_report();
+        let steps = vec![step(1, StepKind::LlmCall, 0, S)];
+        let t = derive_trajectory(&report, &steps).expect("derives");
+        // 5 ticks at 1 s spacing: first sample at 0, last at 4 s.
+        assert_eq!(t.run_duration_ns, 4 * S);
+    }
+
+    /// D5: the temporal residual is not the energy residual rescaled.
+    /// A step offset from the sample grid attributes a full second of
+    /// time but zero energy, because no inter-sample segment lies
+    /// entirely inside its window. Deriving one residual from the
+    /// other would collapse these two figures; they must disagree.
+    #[test]
+    fn temporal_residual_is_independent_of_the_energy_residual() {
+        let report = synthetic_report();
+        // Offset by half a sample period: covers no whole segment.
+        let steps = vec![step(1, StepKind::LlmCall, S / 2, 3 * S / 2)];
+        let t = derive_trajectory(&report, &steps).expect("derives");
+        assert_eq!(t.steps.len(), 1, "step is kept, not dropped");
+
+        assert_eq!(t.steps[0].energy_mj, 0, "no whole segment in window");
+        assert_eq!(
+            t.unattributed_energy_mj, t.total_energy_mj,
+            "all energy is unattributed"
+        );
+
+        // Time, in contrast, is tiled whole.
+        assert_eq!(t.unattributed_duration_ns, 4 * S - S);
+        assert_ne!(
+            t.unattributed_duration_ns, t.run_duration_ns,
+            "a full second of time was attributed while zero energy was"
+        );
+    }
+
+    /// The temporal counterpart of the energy reconciliation: kept
+    /// step durations plus the residual recover the run span exactly.
+    #[test]
+    fn step_durations_and_residual_reconcile_to_the_run_span() {
+        let report = synthetic_report();
+        let steps = vec![
+            step(1, StepKind::LlmCall, 0, S),
+            step(2, StepKind::Tool, 2 * S, 3 * S),
+        ];
+        let t = derive_trajectory(&report, &steps).expect("derives");
+        let attributed: u64 = t
+            .steps
+            .iter()
+            .map(|s| s.end_elapsed_ns - s.start_elapsed_ns)
+            .sum();
+        assert_eq!(attributed + t.unattributed_duration_ns, t.run_duration_ns);
     }
 
     #[test]

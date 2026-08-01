@@ -19,9 +19,13 @@
 //! - [`render`]: text and JSON rendering of a report.
 //! - [`trajectory`]: driver-side step ingestion for agentic
 //!   trajectories. See ADR-013.
+//! - [`cost`]: cost attribution over a derived trajectory, from
+//!   caller-declared rates. Never part of a serialized report. See
+//!   ADR-015.
 //! - [`otel`] (feature `otel-export`): OpenTelemetry export of the
 //!   derived metrics as OTLP/HTTP spans. See ADR-008.
 
+pub mod cost;
 pub mod derive;
 pub mod error;
 pub mod metrics;
@@ -32,6 +36,7 @@ pub mod trajectory;
 #[cfg(feature = "otel-export")]
 pub mod otel;
 
+pub use cost::{derive_cost, CostBasis, StepCost, TrajectoryCost};
 pub use derive::{
     derive_efficiency, derive_gpu, derive_kvcache, derive_phase_energy, derive_resource,
     derive_timing,
