@@ -5,6 +5,58 @@ All notable changes to inferscope are recorded here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+Cost attribution over a measured trajectory (ADR-015), and a way to ask for
+it. Nothing here is measured: every figure is a quantity the trajectory
+layer already measured, multiplied by a rate the caller declares on the
+command line. That is why cost does not appear in the serialized report and
+is not reachable from the run that produces one — a reader of a report finds
+measurements in it, and cannot mistake a declared rate for one.
+
+The derivation is a separate `cost` subcommand over an archived report
+rather than a flag on the run. It follows from where cost is not allowed to
+go, and has a consequence worth stating: a report can be priced again later,
+at a rate that changed or was wrong the first time, without repeating the
+run that produced it.
+
+### Added
+
+- **ADR-015: cost attribution per trajectory step.** The design; the entries
+  below implement it. One basis per derivation, with the rate carried inside
+  the basis so a figure is never separable from the assumption that produced
+  it: occupancy for a node rented by wall-clock time, energy for owned
+  hardware. There is no total that sums the two — on a rented node the
+  energy is already inside the hourly price.
+- `crates/is-report/src/cost.rs`: `derive_cost`, pure over
+  `(&TrajectoryMetrics, CostBasis)`. It abstains rather than pricing an
+  absence: `None` on a zero run duration, which is what a report written
+  before ADR-015 deserializes to, and on zero measured energy. Per-step cost
+  per million tokens is `Option` and withheld for tool steps, for a missing
+  phase timeline, and for zero generation tokens — a step that produced no
+  tokens has no cost per token, rather than a cost per token of zero.
+- `TrajectoryMetrics` gained `run_duration_ns` and `unattributed_duration_ns`,
+  both `serde(default)`. The second is measured, never derived from
+  `unattributed_energy_mj`: a segment straddling a step boundary leaves the
+  energy while the step's time is tiled whole.
+- `inferscope cost --report <path>` with `--usd-per-hour` or `--usd-per-kwh`,
+  mutually exclusive and one required. Renders to stdout with the declared
+  rate beside every figure, including on the whole-run line most likely to be
+  quoted on its own.
+- An invocation carrying both run flags and a subcommand is now rejected by
+  name instead of silently running the subcommand and dropping the flags. A
+  test keeps the flag list level with `Args`, since a flag added later and
+  not listed would reopen exactly that silence.
+
+### Notes
+
+- No measured cost figure exists yet. `derive_cost` multiplies; the number
+  requires a GPU session and is not claimed anywhere until one produces it.
+- Validity domain: single-tenant profiling runs. The run window is not the
+  invoice — provisioning, model load and post-run idle are billed and are
+  outside it, providers bill by the minute or the hour, and no figure is
+  reconciled against what was actually paid (ADR-015 D7).
+
 ## [0.5.0] — 2026-07-29
 Multi-engine metric parsing (ADR-014): inferscope now reads SGLang as well
 as vLLM, and says which engine produced a hit rate rather than leaving the
@@ -606,7 +658,7 @@ The first public release of inferscope.
   unrelated process, sysmon will faithfully sample that process.
   A user must still ensure the PID is the right one.
 
-[Unreleased]: https://github.com/MicheleCampi/inferscope/compare/v0.3.0...HEAD
+[Unreleased]: https://github.com/MicheleCampi/inferscope/compare/v0.5.0...HEAD
 [0.3.0]: https://github.com/MicheleCampi/inferscope/compare/v0.2.1...v0.3.0
 [0.2.1]: https://github.com/MicheleCampi/inferscope/compare/v0.2.0...v0.2.1
 [0.2.0]: https://github.com/MicheleCampi/inferscope/compare/v0.1.0...v0.2.0

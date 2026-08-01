@@ -3,6 +3,7 @@
 - **Status**: Accepted
 - **Date**: 2026-08-01
 - **Supersedes**: none
+- **Superseded in part**: see Postscripts, 2026-08-01
 - **Related**: ADR-010 (energy), ADR-012 (per-phase), ADR-013 (trajectory), ADR-014 (schema provenance)
 
 ## Context
@@ -291,3 +292,42 @@ because a reader of the decision would otherwise have to infer them:
 
 Implemented in `crates/is-report/src/cost.rs`. No dollar figure has
 been measured; the validity domain in D7 is unchanged.
+
+## Postscript 2026-08-01: how cost is asked for
+
+D1 fixes where cost may not go — not into the serialized report — and
+says nothing about how a caller obtains it. Implementing D1 forced that
+second question, and the answer is recorded here rather than in the
+body, which decided something else.
+
+Cost is derived by a subcommand, `inferscope cost --report <path>`,
+over a report that already exists. The alternative was a rate flag on
+the run, printing to stdout after the render. Both satisfy D1
+literally. The subcommand was chosen because it makes the derivation
+repeatable against an archived report: a rate that changed, or that
+was wrong the first time, does not require repeating the run that
+produced the measurements. It also keeps the separation structural
+rather than conventional — the command that prints dollars is not the
+command that writes reports, and does not hold one open for writing.
+
+Consequences that belong to this decision and not to D1:
+
+- **The report is the interface.** Cost derivation now depends on the
+  serialized shape of `TrajectoryMetrics`, which was previously an
+  internal detail between crates. The `serde(default)` fields are what
+  make an older report readable at all; a future field that changes
+  meaning rather than being added would silently change a derived
+  figure.
+- **A rate is validated against its domain, not just its type.** clap
+  parses a float. Zero, a negative number and a non-finite value all
+  parse and would multiply through to something that looks like a
+  price, so they are rejected before `derive_cost` is called.
+- **Run flags and a subcommand are mutually exclusive at the parser.**
+  `subcommand_negates_reqs` makes the run flags optional, which also
+  makes them silently acceptable next to a subcommand. Accepting them
+  would let an invocation that appears to sample and to price do only
+  the second, with nothing said about the first. Such an invocation is
+  refused, naming the offending flags.
+
+No dollar figure has been measured. This postscript describes a
+surface, not a result; the validity domain in D7 is unchanged.
