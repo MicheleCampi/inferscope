@@ -160,3 +160,33 @@ latency, and this is init. Recorded because it touches the cold-start work
 time at fixed configuration would matter to placement assumptions. Measuring
 it would need a GPU session with a timer around both calls, and a way to
 reproduce the resume.
+
+## adr-015-derivation/
+
+ADR-015 cost derivation run end-to-end over the stored A10 + vLLM report
+above, on 2026-08-01, with binary `029cc50`. This is the "end-to-end on
+existing evidence" leg the ADR declares; the arithmetic is new, the
+measurements under it are the July ones.
+
+Both bases were run against the same file, and they behave differently
+by design:
+
+- **Occupancy withholds.** The report predates ADR-015, so
+  `run_duration_ns` is absent and deserializes to zero. A zero duration
+  is the absence of a measurement, not a run that occupied nothing, and
+  the tool says so instead of printing `$0.00`.
+- **Energy derives.** Energy was already measured in July, so this
+  basis has a quantity to price at a declared $0.25/kWh.
+
+The figure worth naming, and the bound that travels with it: **91.2% of
+the run's energy cost falls outside every step window**. Do not read
+this as the share paid for driver think or tool latency. The July
+sampling window was 150 s with one trajectory in flight and five steps,
+so the residual includes long stretches of an idle GPU that no agentic
+workload would leave idle. It demonstrates that `unattributed` is where
+the signal is; it does not measure it. A window sized to the trajectory
+is a prerequisite of any run that intends to publish that number.
+
+Nothing here is a cost claim. The rates are illustrative, chosen to make
+the arithmetic checkable, and no figure is reconciled against an invoice
+(ADR-015 D7).

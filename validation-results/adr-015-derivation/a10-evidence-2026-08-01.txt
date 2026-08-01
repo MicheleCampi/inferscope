@@ -1,0 +1,30 @@
+# ADR-015 end-to-end derivation over stored A10 + vLLM evidence
+# date: 2026-08-01
+# binary: inferscope 029cc50
+# input: validation-results/adr-013-a10-vllm/report-20260721T193436.txt
+
+$ inferscope cost --report validation-results/adr-013-a10-vllm/report-20260721T193436.txt --usd-per-hour 0.75
+inferscope: report validation-results/adr-013-a10-vllm/report-20260721T193436.txt carries a trajectory but no quantity this basis can price: the run duration or the measured energy is zero. A report written before ADR-015 deserializes to a zero run duration and is withheld rather than priced at zero.
+exit=1
+
+$ inferscope cost --report validation-results/adr-013-a10-vllm/report-20260721T193436.txt --usd-per-kwh 0.25
+=== cost attribution (derived, not measured) ===
+basis:            energy (hardware owned; electricity metered separately)
+declared rate:    $0.2500/kWh
+
+run window:       $0.000608 at $0.2500/kWh
+  attributed:     $0.000054
+  unattributed:   $0.000554 (91.2% of run)
+per M gen tokens: $3.6173 at $0.2500/kWh (over the whole run window)
+
+per-step (5 steps, at $0.2500/kWh):
+  step    1  llmcall   $0.000020  $0.3372/Mtok
+  step    2  tool      $0.000002  -
+  step    3  tool      $0.000001  -
+  step    4  tool      $0.000001  -
+  step    5  llmcall   $0.000030  $0.3246/Mtok
+
+Single-tenant profiling run. The run window is not the invoice:
+provisioning, model load and post-run idle are billed and are not
+in it (ADR-015 D7).
+exit=0
