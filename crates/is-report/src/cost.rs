@@ -73,6 +73,21 @@ pub struct TrajectoryCost {
     pub run_usd: f64,
     /// Summed cost of the kept step windows.
     pub attributed_usd: f64,
+    /// Attributed cost spent in steps that generated tokens.
+    ///
+    /// Exactly `attributed_usd` minus [`Self::tool_usd`]: the two
+    /// partition the kept step windows by kind and introduce no new
+    /// price. What they do not partition is `run_usd` — a step
+    /// dropped for falling outside the run window contributes to
+    /// neither, and its duration stays in the residual.
+    pub llm_usd: f64,
+    /// Attributed cost spent in steps that generated no tokens.
+    ///
+    /// On an agentic trajectory this is what the GPU costs while the
+    /// agent is executing a tool rather than serving tokens. It is
+    /// paid on the occupancy basis because the node is held, and on
+    /// the energy basis because the device still draws power.
+    pub tool_usd: f64,
     /// Cost of the run outside any kept step window. On the
     /// occupancy basis this is paid: the node is powered during model
     /// load, between steps, and while the driver thinks (D5).
@@ -148,6 +163,20 @@ pub fn derive_cost(t: &TrajectoryMetrics, basis: CostBasis) -> Option<Trajectory
         })
         .collect();
 
+    // Partition of the kept windows by kind. Summed from the same
+    // per-step figures rendered above, so the identity
+    // `llm_usd + tool_usd == attributed_usd` holds by construction on
+    // both bases rather than by a second derivation.
+    let llm_usd: f64 = steps
+        .iter()
+        .filter(|s| s.kind == StepKind::LlmCall)
+        .map(|s| s.usd)
+        .sum();
+    let tool_usd: f64 = steps
+        .iter()
+        .filter(|s| s.kind == StepKind::Tool)
+        .map(|s| s.usd)
+        .sum();
     let trajectory_usd_per_million_tokens = if t.total_generation_tokens == 0 {
         None
     } else {
@@ -158,6 +187,8 @@ pub fn derive_cost(t: &TrajectoryMetrics, basis: CostBasis) -> Option<Trajectory
         basis,
         run_usd,
         attributed_usd,
+        llm_usd,
+        tool_usd,
         unattributed_usd,
         steps,
         trajectory_usd_per_million_tokens,
@@ -216,6 +247,51 @@ mod tests {
             unattributed_duration_ns: 2 * S,
             dropped_steps: Vec::<DroppedStep>::new(),
         }
+    }
+
+    /// The partition is exact on both bases: it re-sums the same
+    /// per-step figures the report renders, rather than deriving a
+    /// second time from the trajectory.
+    #[test]
+    fn llm_and_tool_partition_the_attributed_cost() {
+        for basis in [
+            CostBasis::Occupancy { usd_per_hour: 1.0 },
+            CostBasis::Energy { usd_per_kwh: 0.25 },
+        ] {
+            let c = derive_cost(&trajectory(), basis).expect("priceable");
+            assert!(
+                (c.llm_usd + c.tool_usd - c.attributed_usd).abs() < 1e-12,
+                "{basis:?}: {} + {} != {}",
+                c.llm_usd,
+                c.tool_usd,
+                c.attributed_usd
+            );
+        }
+    }
+
+    /// What the partition is for. The two steps hold equal energy but
+    /// the tool one generated nothing, so on the energy basis half the
+    /// attributed cost bought no tokens. A single `attributed_usd`
+    /// cannot say that.
+    #[test]
+    fn the_tool_share_is_the_cost_that_bought_no_tokens() {
+        let c = derive_cost(&trajectory(), CostBasis::Energy { usd_per_kwh: 0.25 })
+            .expect("energy is non-zero");
+        assert!((c.tool_usd / c.attributed_usd - 0.5).abs() < 1e-12);
+        assert!((c.llm_usd - c.tool_usd).abs() < 1e-12);
+    }
+
+    /// A trajectory with no tool steps prices its whole attributed
+    /// cost as generating. Zero here is measured, not withheld: the
+    /// steps exist and none of them is a tool.
+    #[test]
+    fn a_trajectory_without_tools_has_no_tool_cost() {
+        let mut t = trajectory();
+        t.steps.retain(|s| s.kind == StepKind::LlmCall);
+        t.tool_energy_mj = 0;
+        let c = derive_cost(&t, CostBasis::Occupancy { usd_per_hour: 1.0 }).expect("priceable");
+        assert_eq!(c.tool_usd, 0.0);
+        assert!((c.llm_usd - c.attributed_usd).abs() < 1e-12);
     }
 
     /// Hand-computed from the fixture: $1.00/h over 4 s is

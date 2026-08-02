@@ -116,6 +116,18 @@ fn occupancy_prices_a_post_adr_015_report() {
     // 40 s attributed, 20 s residual: a third of the run.
     assert!(out.contains("$0.020000 (33.3% of run)"), "{out}");
     assert!(out.contains("$3.6000/hour"), "{out}");
+
+    // The partition of the attributed cost by step kind. 20 s of LLM
+    // and 5 s of tool inside a 40 s attributed window: the tool share
+    // is a fifth of it, and the two sum back to the whole.
+    assert!(
+        out.contains("generating:   $0.035000 (87.5% of attributed)"),
+        "{out}"
+    );
+    assert!(
+        out.contains("in tools:     $0.005000 (12.5% of attributed)"),
+        "{out}"
+    );
 }
 
 #[test]

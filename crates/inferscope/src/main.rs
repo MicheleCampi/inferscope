@@ -677,6 +677,25 @@ fn render_cost(cost: &TrajectoryCost) -> String {
         cost.run_usd
     ));
     out.push_str(&format!("  attributed:     ${:.6}\n", cost.attributed_usd));
+    // The partition is the point on an agentic trajectory: the tool
+    // share is what the GPU cost while the agent was not generating.
+    let share = |usd: f64| {
+        if cost.attributed_usd > 0.0 {
+            100.0 * usd / cost.attributed_usd
+        } else {
+            0.0
+        }
+    };
+    out.push_str(&format!(
+        "    generating:   ${:.6} ({:.1}% of attributed)\n",
+        cost.llm_usd,
+        share(cost.llm_usd)
+    ));
+    out.push_str(&format!(
+        "    in tools:     ${:.6} ({:.1}% of attributed)\n",
+        cost.tool_usd,
+        share(cost.tool_usd)
+    ));
     out.push_str(&format!(
         "  unattributed:   ${:.6} ({:.1}% of run)\n",
         cost.unattributed_usd,

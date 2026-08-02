@@ -39,6 +39,14 @@ run that produced it.
   both `serde(default)`. The second is measured, never derived from
   `unattributed_energy_mj`: a segment straddling a step boundary leaves the
   energy while the step's time is tiled whole.
+- `TrajectoryCost` partitions the attributed cost by step kind:
+  `llm_usd` for steps that generated tokens, `tool_usd` for steps that did
+  not. Summed from the same per-step figures the report renders, so
+  `llm_usd + tool_usd == attributed_usd` holds on both bases by
+  construction. On an agentic trajectory the tool share is what the GPU
+  cost while the agent was not generating — a single attributed figure
+  cannot say that. Note the two do not partition `run_usd`: a step dropped
+  for falling outside the run window contributes to neither.
 - `inferscope cost --report <path>` with `--usd-per-hour` or `--usd-per-kwh`,
   mutually exclusive and one required. Renders to stdout with the declared
   rate beside every figure, including on the whole-run line most likely to be
