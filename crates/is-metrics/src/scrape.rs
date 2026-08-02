@@ -265,7 +265,13 @@ mod tests {
     use wiremock::matchers::{method, path};
     use wiremock::{Mock, MockServer, ResponseTemplate};
 
-    const FIXTURE: &str = include_str!("../tests/fixtures/llm-d-inference-sim-v0.8.2-metrics.txt");
+    /// A body in the shape a real vLLM endpoint emits, generated with
+    /// `prometheus_client` — the library vLLM registers its counters
+    /// with. Scrape mechanics are exercised against this rather than
+    /// against the `llm-d-inference-sim` body, which does not speak the
+    /// same vocabulary for every series — see
+    /// `parse::tests::the_simulator_is_not_a_vllm_endpoint_for_kv`.
+    const FIXTURE: &str = include_str!("../tests/fixtures/vllm-prometheus-client-exposition.txt");
 
     #[tokio::test]
     async fn scrape_once_parses_the_fixture_body() {
@@ -278,14 +284,14 @@ mod tests {
 
         let config = MetricsConfig::new(
             format!("{}/metrics", server.uri()),
-            "facebook/opt-125m",
+            "Qwen/Qwen2.5-7B-Instruct",
             Engine::Vllm,
         );
         let client = build_client().unwrap();
         let sample = scrape_once(&client, &config, Instant::now()).await.unwrap();
 
-        assert_eq!(sample.hits, 96);
-        assert_eq!(sample.queries, 196);
+        assert_eq!(sample.hits, 144);
+        assert_eq!(sample.queries, 270);
     }
 
     #[tokio::test]
@@ -299,7 +305,7 @@ mod tests {
 
         let config = MetricsConfig::new(
             format!("{}/metrics", server.uri()),
-            "facebook/opt-125m",
+            "Qwen/Qwen2.5-7B-Instruct",
             Engine::Vllm,
         );
         let client = build_client().unwrap();
@@ -321,7 +327,7 @@ mod tests {
 
         let config = MetricsConfig::new(
             format!("{}/metrics", server.uri()),
-            "facebook/opt-125m",
+            "Qwen/Qwen2.5-7B-Instruct",
             Engine::Vllm,
         );
         let client = build_client().unwrap();
@@ -353,7 +359,7 @@ mod tests {
 
         let config = MetricsConfig::with_period(
             format!("{}/metrics", server.uri()),
-            "facebook/opt-125m",
+            "Qwen/Qwen2.5-7B-Instruct",
             Engine::Vllm,
             std::time::Duration::from_millis(20),
         );
@@ -371,8 +377,8 @@ mod tests {
         );
         // Every collected sample must carry the fixture's counter values.
         for s in &timeline.samples {
-            assert_eq!(s.hits, 96);
-            assert_eq!(s.queries, 196);
+            assert_eq!(s.hits, 144);
+            assert_eq!(s.queries, 270);
         }
     }
 
@@ -387,7 +393,7 @@ mod tests {
 
         let config = MetricsConfig::new(
             format!("{}/metrics", server.uri()),
-            "facebook/opt-125m",
+            "Qwen/Qwen2.5-7B-Instruct",
             Engine::Vllm,
         );
         let client = build_client().unwrap();
@@ -412,7 +418,7 @@ mod tests {
 
         let config = MetricsConfig::new(
             format!("{}/metrics", server.uri()),
-            "facebook/opt-125m",
+            "Qwen/Qwen2.5-7B-Instruct",
             Engine::Vllm,
         );
         let client = build_client().unwrap();
@@ -443,7 +449,7 @@ mod tests {
 
         let config = MetricsConfig::with_period(
             format!("{}/metrics", server.uri()),
-            "facebook/opt-125m",
+            "Qwen/Qwen2.5-7B-Instruct",
             Engine::Vllm,
             std::time::Duration::from_millis(20),
         );

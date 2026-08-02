@@ -350,13 +350,73 @@ mod tests {
         assert_eq!(extract_label(labels, "name"), None);
     }
 
+    /// A body produced by `prometheus_client`, the library vLLM builds
+    /// its counters with. This is the shape a real vLLM endpoint emits,
+    /// and it differs from the sim fixture above in exactly the way that
+    /// went unnoticed: the library appends `_total` on exposition, so a
+    /// schema spelled with the name vLLM *registers* matches nothing.
+    const VLLM_EXPOSITION: &str =
+        include_str!("../tests/fixtures/vllm-prometheus-client-exposition.txt");
+
     #[test]
-    fn parse_kvcache_from_real_fixture() {
-        // The captured llm-d-inference-sim body: 96 cached tokens out of
-        // 196 queried.
-        let (hits, queries) = parse_kvcache(FIXTURE, "facebook/opt-125m", Engine::Vllm).unwrap();
-        assert_eq!(hits, Some(96));
-        assert_eq!(queries, 196);
+    fn kvcache_parses_against_a_prometheus_client_body() {
+        let (hits, queries) =
+            parse_kvcache(VLLM_EXPOSITION, "Qwen/Qwen2.5-7B-Instruct", Engine::Vllm).unwrap();
+        assert_eq!(hits, Some(144));
+        assert_eq!(queries, 270);
+    }
+
+    #[test]
+    fn phase_parses_against_a_prometheus_client_body() {
+        // The histogram legs were always spelled correctly; this pins
+        // that the fix to the counters did not disturb them.
+        let (prompt, generation, prefill_ns, decode_ns) =
+            parse_phase(VLLM_EXPOSITION, "Qwen/Qwen2.5-7B-Instruct", Engine::Vllm).unwrap();
+        assert_eq!(prompt, 196);
+        assert_eq!(generation, 38);
+        assert!(prefill_ns.is_some());
+        assert!(decode_ns.is_some());
+    }
+
+    #[test]
+    fn the_created_line_is_not_mistaken_for_the_counter() {
+        // `prometheus_client` emits a `_created` gauge beside every
+        // counter. An exact-name match must not read it as the series.
+        assert!(VLLM_EXPOSITION.contains("vllm:prefix_cache_hits_created"));
+        let v = parse_series(
+            VLLM_EXPOSITION,
+            &VLLM_SCHEMA.hit_numerator,
+            "Qwen/Qwen2.5-7B-Instruct",
+        )
+        .unwrap();
+        assert_eq!(v, Some(144));
+    }
+
+    /// `llm-d-inference-sim` is not a vLLM endpoint for the KV series,
+    /// and this pins the divergence rather than papering over it.
+    ///
+    /// The simulator spells the token counters as vLLM *exposes* them
+    /// (`vllm:generation_tokens_total`) but the prefix-cache counters as
+    /// vLLM *registers* them (`vllm:prefix_cache_hits`, no suffix). Real
+    /// vLLM builds both with `prometheus_client`, which appends `_total`
+    /// on exposition. So a body from the simulator yields phase figures
+    /// under `Engine::Vllm` and no KV rate at all.
+    ///
+    /// This asymmetry is why the KV schema went unverified: every test
+    /// and every kind rehearsal read the simulator, and the simulator
+    /// answered.
+    #[test]
+    fn the_simulator_is_not_a_vllm_endpoint_for_kv() {
+        // Phase series: the simulator agrees with vLLM.
+        let (prompt, generation, _, _) =
+            parse_phase(FIXTURE, "facebook/opt-125m", Engine::Vllm).unwrap();
+        assert_eq!(prompt, 196);
+        assert_eq!(generation, 38);
+
+        // KV series: it does not. The denominator is required, so this
+        // is an error and never a hit rate of zero.
+        let err = parse_kvcache(FIXTURE, "facebook/opt-125m", Engine::Vllm).unwrap_err();
+        assert!(matches!(err, MetricsError::Parse { .. }), "{err:?}");
     }
 
     #[test]
@@ -370,8 +430,8 @@ mod tests {
     #[test]
     fn parse_series_skips_comment_lines() {
         // A HELP line naming the metric must not be read as a sample.
-        let body = "# HELP vllm:prefix_cache_hits Prefix cache hits.\n\
-                    # TYPE vllm:prefix_cache_hits counter\n";
+        let body = "# HELP vllm:prefix_cache_hits_total Prefix cache hits.\n\
+                    # TYPE vllm:prefix_cache_hits_total counter\n";
         let v = parse_series(body, &VLLM_SCHEMA.hit_numerator, "m").unwrap();
         assert_eq!(v, None);
     }
@@ -381,7 +441,7 @@ mod tests {
         // A longer name containing the metric must not match: this is
         // what keeps the _created line prometheus_client emits beside
         // every counter out of the reading.
-        let body = "vllm:prefix_cache_hits_extra{model_name=\"m\"} 7\n";
+        let body = "vllm:prefix_cache_hits_total_extra{model_name=\"m\"} 7\n";
         assert_eq!(
             parse_series(body, &VLLM_SCHEMA.hit_numerator, "m").unwrap(),
             None
@@ -390,7 +450,7 @@ mod tests {
 
     #[test]
     fn parse_series_reads_float_value_as_u64() {
-        let body = "vllm:prefix_cache_hits{model_name=\"m\"} 9.0\n";
+        let body = "vllm:prefix_cache_hits_total{model_name=\"m\"} 9.0\n";
         let v = parse_series(body, &VLLM_SCHEMA.hit_numerator, "m").unwrap();
         assert_eq!(v, Some(9));
     }
@@ -399,7 +459,7 @@ mod tests {
     fn parse_series_rejects_negative() {
         // A line that exists but does not parse is an error, unlike a
         // line that is not there at all.
-        let body = "vllm:prefix_cache_hits{model_name=\"m\"} -3\n";
+        let body = "vllm:prefix_cache_hits_total{model_name=\"m\"} -3\n";
         let err = parse_series(body, &VLLM_SCHEMA.hit_numerator, "m").unwrap_err();
         assert!(matches!(err, MetricsError::Parse { .. }));
     }
@@ -407,7 +467,7 @@ mod tests {
     #[test]
     fn parse_series_absent_is_none_not_zero() {
         // The distinction the whole ADR-014 D4 numerator rests on.
-        let body = "vllm:prefix_cache_queries{model_name=\"m\"} 100\n";
+        let body = "vllm:prefix_cache_queries_total{model_name=\"m\"} 100\n";
         assert_eq!(
             parse_series(body, &VLLM_SCHEMA.hit_numerator, "m").unwrap(),
             None

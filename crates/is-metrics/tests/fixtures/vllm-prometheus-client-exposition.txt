@@ -1,0 +1,68 @@
+# HELP vllm:prefix_cache_hits_total Prefix cache hits.
+# TYPE vllm:prefix_cache_hits_total counter
+vllm:prefix_cache_hits_total{model_name="Qwen/Qwen2.5-7B-Instruct"} 144.0
+# HELP vllm:prefix_cache_hits_created Prefix cache hits.
+# TYPE vllm:prefix_cache_hits_created gauge
+vllm:prefix_cache_hits_created{model_name="Qwen/Qwen2.5-7B-Instruct"} 1.7856616338957098e+09
+# HELP vllm:prefix_cache_queries_total Prefix cache queries.
+# TYPE vllm:prefix_cache_queries_total counter
+vllm:prefix_cache_queries_total{model_name="Qwen/Qwen2.5-7B-Instruct"} 270.0
+# HELP vllm:prefix_cache_queries_created Prefix cache queries.
+# TYPE vllm:prefix_cache_queries_created gauge
+vllm:prefix_cache_queries_created{model_name="Qwen/Qwen2.5-7B-Instruct"} 1.7856616338957207e+09
+# HELP vllm:prompt_tokens_total Prompt tokens.
+# TYPE vllm:prompt_tokens_total counter
+vllm:prompt_tokens_total{model_name="Qwen/Qwen2.5-7B-Instruct"} 196.0
+# HELP vllm:prompt_tokens_created Prompt tokens.
+# TYPE vllm:prompt_tokens_created gauge
+vllm:prompt_tokens_created{model_name="Qwen/Qwen2.5-7B-Instruct"} 1.7856616338957279e+09
+# HELP vllm:generation_tokens_total Generation tokens.
+# TYPE vllm:generation_tokens_total counter
+vllm:generation_tokens_total{model_name="Qwen/Qwen2.5-7B-Instruct"} 38.0
+# HELP vllm:generation_tokens_created Generation tokens.
+# TYPE vllm:generation_tokens_created gauge
+vllm:generation_tokens_created{model_name="Qwen/Qwen2.5-7B-Instruct"} 1.7856616338957326e+09
+# HELP vllm:request_prefill_time_seconds Prefill time.
+# TYPE vllm:request_prefill_time_seconds histogram
+vllm:request_prefill_time_seconds_bucket{le="0.005",model_name="Qwen/Qwen2.5-7B-Instruct"} 1.0
+vllm:request_prefill_time_seconds_bucket{le="0.01",model_name="Qwen/Qwen2.5-7B-Instruct"} 1.0
+vllm:request_prefill_time_seconds_bucket{le="0.025",model_name="Qwen/Qwen2.5-7B-Instruct"} 1.0
+vllm:request_prefill_time_seconds_bucket{le="0.05",model_name="Qwen/Qwen2.5-7B-Instruct"} 1.0
+vllm:request_prefill_time_seconds_bucket{le="0.075",model_name="Qwen/Qwen2.5-7B-Instruct"} 1.0
+vllm:request_prefill_time_seconds_bucket{le="0.1",model_name="Qwen/Qwen2.5-7B-Instruct"} 1.0
+vllm:request_prefill_time_seconds_bucket{le="0.25",model_name="Qwen/Qwen2.5-7B-Instruct"} 1.0
+vllm:request_prefill_time_seconds_bucket{le="0.5",model_name="Qwen/Qwen2.5-7B-Instruct"} 1.0
+vllm:request_prefill_time_seconds_bucket{le="0.75",model_name="Qwen/Qwen2.5-7B-Instruct"} 1.0
+vllm:request_prefill_time_seconds_bucket{le="1.0",model_name="Qwen/Qwen2.5-7B-Instruct"} 1.0
+vllm:request_prefill_time_seconds_bucket{le="2.5",model_name="Qwen/Qwen2.5-7B-Instruct"} 1.0
+vllm:request_prefill_time_seconds_bucket{le="5.0",model_name="Qwen/Qwen2.5-7B-Instruct"} 1.0
+vllm:request_prefill_time_seconds_bucket{le="7.5",model_name="Qwen/Qwen2.5-7B-Instruct"} 1.0
+vllm:request_prefill_time_seconds_bucket{le="10.0",model_name="Qwen/Qwen2.5-7B-Instruct"} 1.0
+vllm:request_prefill_time_seconds_bucket{le="+Inf",model_name="Qwen/Qwen2.5-7B-Instruct"} 1.0
+vllm:request_prefill_time_seconds_count{model_name="Qwen/Qwen2.5-7B-Instruct"} 1.0
+vllm:request_prefill_time_seconds_sum{model_name="Qwen/Qwen2.5-7B-Instruct"} 1.4493e-05
+# HELP vllm:request_prefill_time_seconds_created Prefill time.
+# TYPE vllm:request_prefill_time_seconds_created gauge
+vllm:request_prefill_time_seconds_created{model_name="Qwen/Qwen2.5-7B-Instruct"} 1.7856616338957412e+09
+# HELP vllm:request_decode_time_seconds Decode time.
+# TYPE vllm:request_decode_time_seconds histogram
+vllm:request_decode_time_seconds_bucket{le="0.005",model_name="Qwen/Qwen2.5-7B-Instruct"} 1.0
+vllm:request_decode_time_seconds_bucket{le="0.01",model_name="Qwen/Qwen2.5-7B-Instruct"} 1.0
+vllm:request_decode_time_seconds_bucket{le="0.025",model_name="Qwen/Qwen2.5-7B-Instruct"} 1.0
+vllm:request_decode_time_seconds_bucket{le="0.05",model_name="Qwen/Qwen2.5-7B-Instruct"} 1.0
+vllm:request_decode_time_seconds_bucket{le="0.075",model_name="Qwen/Qwen2.5-7B-Instruct"} 1.0
+vllm:request_decode_time_seconds_bucket{le="0.1",model_name="Qwen/Qwen2.5-7B-Instruct"} 1.0
+vllm:request_decode_time_seconds_bucket{le="0.25",model_name="Qwen/Qwen2.5-7B-Instruct"} 1.0
+vllm:request_decode_time_seconds_bucket{le="0.5",model_name="Qwen/Qwen2.5-7B-Instruct"} 1.0
+vllm:request_decode_time_seconds_bucket{le="0.75",model_name="Qwen/Qwen2.5-7B-Instruct"} 1.0
+vllm:request_decode_time_seconds_bucket{le="1.0",model_name="Qwen/Qwen2.5-7B-Instruct"} 1.0
+vllm:request_decode_time_seconds_bucket{le="2.5",model_name="Qwen/Qwen2.5-7B-Instruct"} 1.0
+vllm:request_decode_time_seconds_bucket{le="5.0",model_name="Qwen/Qwen2.5-7B-Instruct"} 1.0
+vllm:request_decode_time_seconds_bucket{le="7.5",model_name="Qwen/Qwen2.5-7B-Instruct"} 1.0
+vllm:request_decode_time_seconds_bucket{le="10.0",model_name="Qwen/Qwen2.5-7B-Instruct"} 1.0
+vllm:request_decode_time_seconds_bucket{le="+Inf",model_name="Qwen/Qwen2.5-7B-Instruct"} 1.0
+vllm:request_decode_time_seconds_count{model_name="Qwen/Qwen2.5-7B-Instruct"} 1.0
+vllm:request_decode_time_seconds_sum{model_name="Qwen/Qwen2.5-7B-Instruct"} 2.8432e-05
+# HELP vllm:request_decode_time_seconds_created Decode time.
+# TYPE vllm:request_decode_time_seconds_created gauge
+vllm:request_decode_time_seconds_created{model_name="Qwen/Qwen2.5-7B-Instruct"} 1.7856616338957958e+09

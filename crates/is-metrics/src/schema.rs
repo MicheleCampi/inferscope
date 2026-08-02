@@ -99,8 +99,15 @@ pub(crate) struct EngineSchema {
 
 /// The vLLM vocabulary (ADR-011, ADR-012).
 pub(crate) const VLLM_SCHEMA: EngineSchema = EngineSchema {
-    hit_numerator: Series::single("vllm:prefix_cache_hits"),
-    hit_denominator: Series::single("vllm:prefix_cache_queries"),
+    // The `_total` suffix is what the endpoint exposes, not what vLLM
+    // registers. `loggers.py` names these counters without it, but they
+    // are `prometheus_client.Counter`, and that library appends `_total`
+    // on exposition unless the name already carries it. The two token
+    // counters below happen to be spelled with the suffix and so always
+    // matched; these two were spelled as registered and never matched a
+    // real vLLM endpoint (verified against prometheus_client 0.26.0).
+    hit_numerator: Series::single("vllm:prefix_cache_hits_total"),
+    hit_denominator: Series::single("vllm:prefix_cache_queries_total"),
     prompt_tokens: Series::single("vllm:prompt_tokens_total"),
     generation_tokens: Series::single("vllm:generation_tokens_total"),
     prefill_time_sum: Some("vllm:request_prefill_time_seconds_sum"),
