@@ -38,7 +38,13 @@ features are gated behind the `gpu-nvidia` feature flag.
   prefill vs decode with the divergence between two apportionments
   as the signal (ADR-012), and per-step attribution across agentic
   trajectories (ADR-013). Per-step energy is measured on an A10
-  against vLLM; per-step KV-cache figures are fixture-only so far.
+  against vLLM. **No KV-cache hit rate has been measured against a real
+  vLLM endpoint.** Until 2026-08-02 the schema named the series as
+  vLLM's source registers them rather than as its endpoint exposes them,
+  so every scrape against real vLLM failed and only the simulator
+  answered; the A10 evidence of 2026-07-21 carries zeros for that
+  reason. Fixed in `cd0ece6`, unmeasured until a GPU run says
+  otherwise — see the ADR-011 postscript.
   [`validation-results/`](validation-results/) states the bounds of
   each run.
 - **Multi-engine** (v0.5): SGLang is read alongside vLLM (ADR-014).
@@ -138,6 +144,8 @@ $ inferscope \
     --metrics-endpoint http://127.0.0.1:8000/metrics \
     --engine vllm \
     --metrics-period-ms 300
+# Output below is from llm-d-inference-sim, not a GPU. See the note
+# after this block: no KV-cache rate has yet been read off real vLLM.
 
 Probe summary
   Tokens generated      120

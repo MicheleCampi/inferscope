@@ -35,6 +35,18 @@ Confirms:
   apportionments and their divergence
 
 Bounds on this evidence, and they matter:
+
+- **The KV-cache figures are absent, not zero, and the report cannot say
+  so.** All five steps carry `cache_hits_delta: 0` and
+  `cache_queries_delta: 0`. The cache was not idle: until 2026-08-02 the
+  schema asked for `vllm:prefix_cache_hits` / `_queries`, the names
+  vLLM's source registers, while its endpoint exposes them with the
+  OpenMetrics `_total` suffix that `prometheus_client` appends. Every
+  scrape failed, `scrape_during` swallowed the per-tick error as it is
+  designed to, and deltas over the resulting degenerate timeline read as
+  zero. Fixed in `cd0ece6`; see the ADR-011 postscript. Nothing else in
+  this run is affected — the phase and energy series were spelled
+  correctly and their figures stand.
 - **The per-step counter figures predate a fix and are wrong as recorded.**
   The delta baseline was the first sample inside each step window, so the
   prefill jumps visible in the timeline (+6223 at t=4.009 s, +6363 at
