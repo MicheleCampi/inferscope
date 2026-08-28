@@ -1,6 +1,8 @@
 # inferscope
 
-> Profiling and observability for LLM inference engines.
+> **Not just how fast a request was — where the time went.**
+> A profiler for LLM inference engines that correlates per-token client
+> latency with what the engine is doing on the GPU, on one shared clock.
 
 [![CI](https://github.com/MicheleCampi/inferscope/actions/workflows/ci.yml/badge.svg)](https://github.com/MicheleCampi/inferscope/actions/workflows/ci.yml)
 [![License: Apache-2.0](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
