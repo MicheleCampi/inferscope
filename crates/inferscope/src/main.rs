@@ -13,7 +13,7 @@ use std::time::{Duration, Instant};
 
 use tokio::sync::oneshot;
 
-use is_metrics::{scrape_during, scrape_phase_during, Engine, MetricsConfig};
+use is_metrics::{scrape_during, scrape_phase_during, scrape_spec_during, Engine, MetricsConfig};
 
 use is_probe::{config::ProbeConfig, runner::run as run_probe};
 use is_report::{
@@ -81,6 +81,24 @@ fn main() -> ExitCode {
             ExitCode::FAILURE
         }
     }
+}
+
+/// The three scrape tasks and their cancels, held together.
+///
+/// ADR-011 needed one, ADR-012 made it two, ADR-016 makes it three, and a
+/// six-element tuple stops being readable well before that (ADR-016 D6).
+/// Naming them also removes the failure this shape invites: three
+/// `JoinHandle`s and three `oneshot::Sender`s destructured positionally are
+/// indistinguishable to the compiler, so cancelling the wrong loop would
+/// compile and would show up only as a timeline that is shorter than the
+/// run.
+struct MetricsHandles {
+    kv: tokio::task::JoinHandle<is_core::KvCacheTimeline>,
+    kv_cancel: oneshot::Sender<()>,
+    phase: tokio::task::JoinHandle<is_core::PhaseTimeline>,
+    phase_cancel: oneshot::Sender<()>,
+    spec: tokio::task::JoinHandle<is_core::SpecTimeline>,
+    spec_cancel: oneshot::Sender<()>,
 }
 
 /// Runs one probe (plus optional sysmon and GPU sampler), builds
@@ -191,20 +209,29 @@ async fn orchestrate(args: Args, engine: Option<Engine>) -> Result<(), String> {
         engine,
     ) {
         (Some(endpoint), Some(model), Some(engine)) => {
-            // Both scrapes hit the same /metrics endpoint over the
+            // Three scrapes hit the same /metrics endpoint over the
             // same run window, sharing `start` and each its own cancel
-            // (ADR-012). They are separate loops, not one GET split two
-            // ways: KV hit-rate and phase energy are independent
-            // first/last reductions, and keeping them separate leaves
-            // the ADR-011 KV path untouched.
+            // (ADR-012, ADR-016 D2). They are separate loops, not one
+            // GET split three ways: KV hit-rate, phase energy and
+            // speculative acceptance are independent first/last
+            // reductions, and keeping them separate leaves the earlier
+            // paths untouched as each is added.
             let kv_cfg = MetricsConfig::with_period(endpoint, model, engine, args.metrics_period());
             let phase_cfg =
                 MetricsConfig::with_period(endpoint, model, engine, args.metrics_period());
+            let spec_cfg =
+                MetricsConfig::with_period(endpoint, model, engine, args.metrics_period());
             let (kv_cancel, kv_rx) = oneshot::channel();
             let (phase_cancel, phase_rx) = oneshot::channel();
-            let kv_task = tokio::spawn(scrape_during(kv_cfg, start, kv_rx));
-            let phase_task = tokio::spawn(scrape_phase_during(phase_cfg, start, phase_rx));
-            Some((kv_task, kv_cancel, phase_task, phase_cancel))
+            let (spec_cancel, spec_rx) = oneshot::channel();
+            Some(MetricsHandles {
+                kv: tokio::spawn(scrape_during(kv_cfg, start, kv_rx)),
+                kv_cancel,
+                phase: tokio::spawn(scrape_phase_during(phase_cfg, start, phase_rx)),
+                phase_cancel,
+                spec: tokio::spawn(scrape_spec_during(spec_cfg, start, spec_rx)),
+                spec_cancel,
+            })
         }
         _ => None,
     };
@@ -258,28 +285,38 @@ async fn orchestrate(args: Args, engine: Option<Engine>) -> Result<(), String> {
     // Stop the metrics scrape (if running) and collect its timeline,
     // same shape as the other samplers. A panicked task is non-fatal:
     // warn and report whatever the probe captured (ADR-011).
-    let (kvcache_timeline, phase_timeline) =
-        if let Some((kv_task, kv_cancel, phase_task, phase_cancel)) = metrics_handle {
-            let _ = kv_cancel.send(());
-            let _ = phase_cancel.send(());
-            let kv = match kv_task.await {
-                Ok(timeline) => Some(timeline),
-                Err(e) => {
-                    eprintln!("inferscope: warning: metrics scrape task ended abnormally: {e}");
-                    None
-                }
-            };
-            let phase = match phase_task.await {
-                Ok(timeline) => Some(timeline),
-                Err(e) => {
-                    eprintln!("inferscope: warning: phase scrape task ended abnormally: {e}");
-                    None
-                }
-            };
-            (kv, phase)
-        } else {
-            (None, None)
+    let (kvcache_timeline, phase_timeline, spec_timeline) = if let Some(h) = metrics_handle {
+        // Every cancel first, then every await: cancelling one loop and
+        // waiting for it before signalling the next would let the others
+        // keep scraping past the end of the run window.
+        let _ = h.kv_cancel.send(());
+        let _ = h.phase_cancel.send(());
+        let _ = h.spec_cancel.send(());
+        let kv = match h.kv.await {
+            Ok(timeline) => Some(timeline),
+            Err(e) => {
+                eprintln!("inferscope: warning: metrics scrape task ended abnormally: {e}");
+                None
+            }
         };
+        let phase = match h.phase.await {
+            Ok(timeline) => Some(timeline),
+            Err(e) => {
+                eprintln!("inferscope: warning: phase scrape task ended abnormally: {e}");
+                None
+            }
+        };
+        let spec = match h.spec.await {
+            Ok(timeline) => Some(timeline),
+            Err(e) => {
+                eprintln!("inferscope: warning: spec scrape task ended abnormally: {e}");
+                None
+            }
+        };
+        (kv, phase, spec)
+    } else {
+        (None, None, None)
+    };
 
     // Sanity check: warn if the monitored PID looks like a
     // wrapper rather than the actual workload. If every sample
@@ -351,6 +388,7 @@ async fn orchestrate(args: Args, engine: Option<Engine>) -> Result<(), String> {
         kvcache,
         phase_timeline,
         phase_energy,
+        spec_timeline,
         trajectory: None,
         reference_instant_unix_ns,
         schema_version: Some(is_report::REPORT_SCHEMA_VERSION),
@@ -451,21 +489,39 @@ async fn run_sample_only(
         None
     };
 
-    // Spawn the per-phase metrics scrape if --metrics-endpoint and
-    // --model were supplied (ADR-012). Not feature-gated: the scrape
-    // is an HTTP read of the engine's Prometheus endpoint, not NVML.
-    // It shares `start` with the samplers and is cancelled by the
-    // same timer below (ADR-003).
-    let phase_handle = match (
+    // Spawn the per-phase and speculative scrapes if --metrics-endpoint
+    // and --model were supplied (ADR-012, ADR-016). Not feature-gated:
+    // these are HTTP reads of the engine's Prometheus endpoint, not
+    // NVML. They share `start` with the samplers and are cancelled by
+    // the same timer below (ADR-003).
+    //
+    // This path is where the speculative campaign runs, not a
+    // convenience mirror of `orchestrate` (ADR-016 D6): a speculative
+    // run is driven by an external load generator against a server
+    // started with a speculative config, and inferscope attaches to
+    // that server's PID. Wiring the scrape only into the probe path
+    // would collect nothing on the exact run ADR-016 exists to enable.
+    //
+    // The KV scrape is still absent here. That gap predates ADR-016 and
+    // is recorded rather than closed by it.
+    let scrape_handles = match (
         args.metrics_endpoint.as_deref(),
         args.model.as_deref(),
         engine,
     ) {
         (Some(endpoint), Some(model), Some(engine)) => {
-            let cfg = MetricsConfig::with_period(endpoint, model, engine, args.metrics_period());
-            let (cancel_tx, cancel_rx) = oneshot::channel();
-            let task = tokio::spawn(scrape_phase_during(cfg, start, cancel_rx));
-            Some((task, cancel_tx))
+            let phase_cfg =
+                MetricsConfig::with_period(endpoint, model, engine, args.metrics_period());
+            let spec_cfg =
+                MetricsConfig::with_period(endpoint, model, engine, args.metrics_period());
+            let (phase_cancel, phase_rx) = oneshot::channel();
+            let (spec_cancel, spec_rx) = oneshot::channel();
+            Some((
+                tokio::spawn(scrape_phase_during(phase_cfg, start, phase_rx)),
+                phase_cancel,
+                tokio::spawn(scrape_spec_during(spec_cfg, start, spec_rx)),
+                spec_cancel,
+            ))
         }
         _ => None,
     };
@@ -496,18 +552,31 @@ async fn run_sample_only(
     };
     #[cfg(not(feature = "gpu-nvidia"))]
     let gpu_timeline: Option<is_core::GpuTimeline> = None;
-    let phase_timeline = if let Some((task, cancel_tx)) = phase_handle {
-        let _ = cancel_tx.send(());
-        match task.await {
-            Ok(tl) => Some(tl),
-            Err(e) => {
-                eprintln!("inferscope: warning: phase scrape task ended abnormally: {e}");
-                None
-            }
-        }
-    } else {
-        None
-    };
+    let (phase_timeline, spec_timeline) =
+        if let Some((phase_task, phase_cancel, spec_task, spec_cancel)) = scrape_handles {
+            // Both cancels before either await, so neither loop keeps
+            // scraping past the end of the sampling window while the
+            // other is being joined.
+            let _ = phase_cancel.send(());
+            let _ = spec_cancel.send(());
+            let phase = match phase_task.await {
+                Ok(tl) => Some(tl),
+                Err(e) => {
+                    eprintln!("inferscope: warning: phase scrape task ended abnormally: {e}");
+                    None
+                }
+            };
+            let spec = match spec_task.await {
+                Ok(tl) => Some(tl),
+                Err(e) => {
+                    eprintln!("inferscope: warning: spec scrape task ended abnormally: {e}");
+                    None
+                }
+            };
+            (phase, spec)
+        } else {
+            (None, None)
+        };
 
     let resource = match resource_timeline.as_ref() {
         Some(tl) => derive_resource(tl).map_err(|e| format!("report derivation failed: {e}"))?,
@@ -550,6 +619,7 @@ async fn run_sample_only(
         gpu,
         phase_timeline,
         phase_energy,
+        spec_timeline,
         trajectory,
         schema_version: Some(is_report::REPORT_SCHEMA_VERSION),
     };
@@ -801,6 +871,7 @@ mod tests {
             resource: None,
             gpu: None,
             phase_timeline: None,
+            spec_timeline: None,
             phase_energy: None,
             trajectory,
             schema_version: None,

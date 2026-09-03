@@ -72,6 +72,7 @@ fn write_report(steps: &[StepRecord], secs: u64) -> (tempfile::TempDir, std::pat
         resource: None,
         gpu: None,
         phase_timeline: None,
+        spec_timeline: None,
         phase_energy: None,
         trajectory: Some(trajectory),
         schema_version: None,

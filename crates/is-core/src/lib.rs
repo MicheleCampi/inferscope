@@ -13,14 +13,14 @@ pub mod error;
 pub mod gpu;
 pub mod kvcache;
 pub mod phase;
-pub mod spec;
 pub mod resource;
+pub mod spec;
 pub mod timing;
 
 pub use error::CoreError;
 pub use gpu::{DeviceEnergy, EnergySource, GpuSample, GpuTimeline};
 pub use kvcache::{HitRateAccounting, KvCacheSample, KvCacheTimeline};
 pub use phase::{PhaseSample, PhaseTimeline};
-pub use spec::{SpecSample, SpecTimeline};
 pub use resource::{ResourceSample, ResourceTimeline};
+pub use spec::{SpecSample, SpecTimeline};
 pub use timing::{RequestTiming, TokenArrival};

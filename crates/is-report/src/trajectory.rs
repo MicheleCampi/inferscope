@@ -677,6 +677,7 @@ mod derive_tests {
             kvcache_timeline: Some(kv),
             kvcache: None,
             phase_timeline: Some(phase),
+            spec_timeline: None,
             phase_energy: None,
             trajectory: None,
             schema_version: Some(crate::metrics::REPORT_SCHEMA_VERSION),

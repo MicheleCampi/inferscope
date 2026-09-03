@@ -55,6 +55,16 @@ pub struct ResourceReport {
     /// energy was sampled, or either apportionment basis had a zero delta.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub phase_energy: Option<PhaseEnergyMetrics>,
+    /// The raw speculative-decoding timeline scraped during the sampling
+    /// window, if `--metrics-endpoint` was supplied (ADR-016). This is
+    /// the campaign path: a speculative run is driven by an external
+    /// load generator against a server started with a speculative
+    /// config, and inferscope attaches to its PID (ADR-016 D6).
+    ///
+    /// `None` when no endpoint was configured; empty when the engine was
+    /// not speculating.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub spec_timeline: Option<is_core::SpecTimeline>,
     /// Derived per-step trajectory attribution over the sampling
     /// window, if a step file was supplied and the join was valid
     /// (ADR-013). `None` when no steps were provided, the anchor is
@@ -92,6 +102,7 @@ mod tests {
             resource: None,
             gpu: None,
             phase_timeline: None,
+            spec_timeline: None,
             phase_energy: Some(PhaseEnergyMetrics {
                 prefill_ns_delta: Some(14493),
                 decode_ns_delta: Some(28432),
@@ -122,12 +133,14 @@ mod tests {
             resource: None,
             gpu: None,
             phase_timeline: None,
+            spec_timeline: None,
             phase_energy: None,
             trajectory: None,
             schema_version: None,
         };
         let json = render_resource_json(&report).unwrap();
         assert!(!json.contains("phase_timeline"));
+        assert!(!json.contains("spec_timeline"));
         assert!(!json.contains("phase_energy"));
         // And a pre-ADR-012 JSON without the fields still deserialises.
         let legacy = serde_json::to_string(&serde_json::json!({

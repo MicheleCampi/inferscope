@@ -133,9 +133,7 @@ pub(crate) const VLLM_SCHEMA: EngineSchema = EngineSchema {
     // Same `_total` exposition rule as the two counters above: these are
     // registered without the suffix and exposed with it.
     spec_draft_tokens: Some(Series::single("vllm:spec_decode_num_draft_tokens_total")),
-    spec_accepted_tokens: Some(Series::single(
-        "vllm:spec_decode_num_accepted_tokens_total",
-    )),
+    spec_accepted_tokens: Some(Series::single("vllm:spec_decode_num_accepted_tokens_total")),
     spec_drafts: Some(Series::single("vllm:spec_decode_num_drafts_total")),
 };
 
