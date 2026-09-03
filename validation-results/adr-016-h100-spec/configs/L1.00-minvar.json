@@ -1,0 +1,13 @@
+{
+  "method": "draft_model",
+  "model": "meta-llama/Llama-3.2-1B-Instruct",
+  "num_speculative_tokens": 5,
+  "rejection_sample_method": "synthetic",
+  "synthetic_acceptance_rates": [
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0
+  ]
+}
