@@ -38,9 +38,25 @@ cannot be separated from the knob afterwards.
 - Fixed prompt set, fixed count, replayed in the same order every run.
 - `temperature=0`. With sampling, output length varies between runs and the
   total work differs between points that should differ only in acceptance.
-- Fixed `max_tokens`, fixed concurrency, fixed request rate.
+- `--ignore-eos`. Without it the model may stop before `max_tokens`, and
+  output length varies with acceptance - the same confound `temperature=0`
+  closes on the sampling side but not on the stopping side.
+- Fixed `--request-rate` at a finite value, never `inf`. The default sends
+  every request at t=0, which is a burst and not the steady state this
+  measures. `--burstiness` stays at its 1.0 default: under a fixed seed it is
+  the value that makes arrival intervals reproducible.
+- Fixed `--num-prompts`, fixed input and output lengths, `--seed` recorded.
+- Generator: `vllm bench serve --dataset-name sonnet`, with
+  `--sonnet-input-len` and `--sonnet-output-len` fixed. It ships with vLLM, so
+  the campaign is reproducible by anyone who has the engine, and its JSON
+  summary supplies discard criterion 4 directly.
 - The load generator is external; inferscope attaches with `--sample-only`
   and `--gpu` (ADR-016 D6).
+
+Flags verified at source against `vllm/benchmarks/serve.py` at
+vllm-project/vllm `d410fc1`: `--request-rate` defaults to `inf`,
+`--burstiness` to 1.0, `--ignore-eos` is a store_true flag, and `--seed` seeds
+both `random` and `numpy.random`.
 
 ## Run order
 
