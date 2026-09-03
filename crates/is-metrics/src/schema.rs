@@ -164,16 +164,25 @@ pub(crate) const SGLANG_SCHEMA: EngineSchema = EngineSchema {
     generation_tokens: Series::single("sglang:generation_tokens_total"),
     prefill_time_sum: None,
     decode_time_sum: None,
-    // SGLang exposes speculative decoding as gauges, not counters:
+    // SGLang exposes speculative decoding as gauges, not counters.
     // `sglang:spec_accept_length` and `sglang:spec_accept_rate` are means
-    // over the current batch, and `sglang:spec_num_steps` /
+    // over the current batch; `sglang:spec_num_steps` and
     // `sglang:spec_num_draft_tokens` report the active configuration rather
-    // than work done (verified at source in
-    // `observability/metrics_collector.py`). A gauge carrying a current mean
-    // has no meaning under the window differencing this crate performs -
-    // the same reason `sglang:cache_hit_rate` is not read either. The
-    // cumulative draft/accepted counts vLLM exposes have no SGLang
-    // counterpart, so this is a capability gap and not a naming one.
+    // than work done; `sglang:spec_cap_length` and
+    // `sglang:spec_block_accept_length` are per-verify-step means. All six
+    // are `Gauge` with `multiprocess_mode="mostrecent"`, verified at source
+    // in `observability/metrics_collector.py` at sgl-project/sglang
+    // `54cadad`. A gauge carrying a current mean has no meaning under the
+    // window differencing this crate performs - the same reason
+    // `sglang:cache_hit_rate` is not read either.
+    //
+    // One cumulative speculative counter does exist,
+    // `sglang:spec_verify_calls_total`, and it would difference cleanly.
+    // It counts verification calls, which is neither a draft-token count
+    // nor an accepted-token count, so it yields no acceptance rate and no
+    // acceptance length on its own. The gap is therefore in what is
+    // counted, not in whether anything is: SGLang has no cumulative
+    // draft/accepted pair, and one counter that cannot substitute for it.
     spec_draft_tokens: None,
     spec_accepted_tokens: None,
     spec_drafts: None,
