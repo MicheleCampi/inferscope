@@ -95,6 +95,24 @@ pub(crate) struct EngineSchema {
     /// Total seconds spent in decode, or `None` — see
     /// [`Self::prefill_time_sum`].
     pub(crate) decode_time_sum: Option<&'static str>,
+
+    /// Draft tokens proposed by speculative decoding, or `None` where the
+    /// engine does not speculate or does not count it.
+    ///
+    /// This is the work that was *done*: every draft token cost a forward
+    /// pass whether or not it survived verification. Paired with
+    /// [`Self::spec_accepted_tokens`] it gives the acceptance rate, and
+    /// paired with the energy counters it gives what the rejected fraction
+    /// cost in joules — which is the quantity latency benchmarks cannot see.
+    pub(crate) spec_draft_tokens: Option<Series>,
+
+    /// Draft tokens that survived verification, or `None`.
+    pub(crate) spec_accepted_tokens: Option<Series>,
+
+    /// Number of speculation rounds, or `None`. Divides the two counters
+    /// above into a per-round mean acceptance length, which is the unit the
+    /// engine's own tuning parameters are expressed in.
+    pub(crate) spec_drafts: Option<Series>,
 }
 
 /// The vLLM vocabulary (ADR-011, ADR-012).
@@ -112,6 +130,13 @@ pub(crate) const VLLM_SCHEMA: EngineSchema = EngineSchema {
     generation_tokens: Series::single("vllm:generation_tokens_total"),
     prefill_time_sum: Some("vllm:request_prefill_time_seconds_sum"),
     decode_time_sum: Some("vllm:request_decode_time_seconds_sum"),
+    // Same `_total` exposition rule as the two counters above: these are
+    // registered without the suffix and exposed with it.
+    spec_draft_tokens: Some(Series::single("vllm:spec_decode_num_draft_tokens_total")),
+    spec_accepted_tokens: Some(Series::single(
+        "vllm:spec_decode_num_accepted_tokens_total",
+    )),
+    spec_drafts: Some(Series::single("vllm:spec_decode_num_drafts_total")),
 };
 
 /// The SGLang vocabulary, verified at source against the tokenizer
@@ -141,6 +166,19 @@ pub(crate) const SGLANG_SCHEMA: EngineSchema = EngineSchema {
     generation_tokens: Series::single("sglang:generation_tokens_total"),
     prefill_time_sum: None,
     decode_time_sum: None,
+    // SGLang exposes speculative decoding as gauges, not counters:
+    // `sglang:spec_accept_length` and `sglang:spec_accept_rate` are means
+    // over the current batch, and `sglang:spec_num_steps` /
+    // `sglang:spec_num_draft_tokens` report the active configuration rather
+    // than work done (verified at source in
+    // `observability/metrics_collector.py`). A gauge carrying a current mean
+    // has no meaning under the window differencing this crate performs -
+    // the same reason `sglang:cache_hit_rate` is not read either. The
+    // cumulative draft/accepted counts vLLM exposes have no SGLang
+    // counterpart, so this is a capability gap and not a naming one.
+    spec_draft_tokens: None,
+    spec_accepted_tokens: None,
+    spec_drafts: None,
 };
 
 impl Engine {
