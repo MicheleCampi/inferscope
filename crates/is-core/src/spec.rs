@@ -1,4 +1,4 @@
-//! Speculative-decoding counters scraped from an engine (ADR-015).
+//! Speculative-decoding counters scraped from an engine (ADR-016).
 //!
 //! Speculative decoding is tuned on latency: acceptance rate and tokens
 //! per second. Neither says what the rejected drafts cost. A draft token
@@ -37,6 +37,17 @@ pub struct SpecSample {
     /// Cumulative speculation rounds. Divides `accepted_tokens` into the
     /// mean acceptance length the engine's own tuning knobs are
     /// expressed in.
+    ///
+    /// That length includes the bonus token, and the `+1` is not
+    /// cosmetic (ADR-016 D4). vLLM computes it as `1 + accepted /
+    /// drafts`, and `synthetic_acceptance_length` is declared in the
+    /// same convention - which is why its domain is `[1, k+1]` rather
+    /// than `[0, k]`, and why the internal resolution subtracts one
+    /// before distributing the mean across draft positions. A
+    /// derivation that divides without adding the one reports every
+    /// run as a full token less accepting than it was configured to
+    /// be, which on an energy sweep does not read as an error: it
+    /// reads as a crossover in the wrong place.
     pub drafts: u64,
 }
 
