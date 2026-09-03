@@ -21,13 +21,13 @@
 
 use std::time::Instant;
 
-use is_core::{KvCacheSample, KvCacheTimeline, PhaseSample, PhaseTimeline};
+use is_core::{KvCacheSample, KvCacheTimeline, PhaseSample, PhaseTimeline, SpecTimeline};
 use tokio::sync::oneshot;
 use tokio::time::{interval, MissedTickBehavior};
 
 use crate::config::MetricsConfig;
 use crate::error::MetricsError;
-use crate::parse::{parse_kvcache, parse_phase};
+use crate::parse::{parse_kvcache, parse_phase, parse_spec, SpecReading};
 
 /// Builds the HTTP client used for scraping.
 ///
@@ -258,6 +258,113 @@ pub async fn scrape_phase_during(
     timeline
 }
 
+/// Scrapes the endpoint once and returns one speculative reading.
+///
+/// Unlike [`scrape_once`] and [`scrape_phase_once`], this returns the raw
+/// reading rather than a sample. `scrape_once` turns an absent hit-rate
+/// numerator into an error because `KvCacheSample` cannot express absence;
+/// `SpecSample` cannot either, but the decision was already placed in
+/// `is-core`, where [`is_core::SpecTimeline::push`] takes three `Option`s and
+/// drops the tick if any is missing. Returning a `Result<SpecSample, _>` here
+/// would move that decision into the I/O layer and leave `push`'s
+/// partial-family branch unreachable from the only path that calls it
+/// (ADR-016 D3).
+///
+/// So the three counters travel out exactly as the body carried them, paired
+/// with the elapsed timestamp. Same timestamp discipline as the other two:
+/// taken immediately before the request is issued, so it reflects when the
+/// scrape began.
+///
+/// `Err` keeps its usual meaning — `Http` on a request failure, `Status` on a
+/// non-success code, `Parse` on a line that exists and does not parse. A body
+/// from an engine that is not speculating is none of those: it yields
+/// `(elapsed, None, None, None)`.
+pub async fn scrape_spec_once(
+    client: &reqwest::Client,
+    config: &MetricsConfig,
+    start: Instant,
+) -> Result<(u64, SpecReading), MetricsError> {
+    let elapsed_ns = start.elapsed().as_nanos() as u64;
+
+    let response = client
+        .get(&config.endpoint)
+        .send()
+        .await
+        .map_err(|source| MetricsError::Http { source })?;
+
+    let status = response.status();
+    if !status.is_success() {
+        return Err(MetricsError::Status {
+            status: status.as_u16(),
+        });
+    }
+
+    let body = response
+        .text()
+        .await
+        .map_err(|source| MetricsError::Http { source })?;
+
+    let reading = parse_spec(&body, &config.model_name, config.engine)?;
+
+    Ok((elapsed_ns, reading))
+}
+
+/// Runs the speculative scrape loop until cancelled.
+///
+/// The third loop over the same run window, separate from the KV loop
+/// (ADR-011) and the phase loop (ADR-012) for the reason ADR-012 established
+/// and ADR-016 D2 restates: these are independent first/last reductions, so
+/// they share `start` and the cancel discipline — the clock the correlation
+/// with energy rests on — and nothing else.
+///
+/// Same contract as the other two, without exception:
+/// `MissedTickBehavior::Skip`, a `biased` cancel arm that wins over the tick,
+/// per-tick errors swallowed, and an empty timeline rather than a propagated
+/// error if the client cannot be built.
+///
+/// An engine that is not speculating produces an empty timeline through a
+/// different route than an engine that fails to answer: every tick succeeds
+/// and every tick is dropped by `push`. Both are empty, and the report says
+/// only that no speculative measurement exists — which is all either fact
+/// supports.
+pub async fn scrape_spec_during(
+    config: MetricsConfig,
+    start: Instant,
+    mut cancel: oneshot::Receiver<()>,
+) -> SpecTimeline {
+    let mut timeline = SpecTimeline::new(config.sample_period.as_nanos() as u64);
+
+    let client = match build_client() {
+        Ok(c) => c,
+        Err(_) => return timeline,
+    };
+
+    let mut ticker = interval(config.sample_period);
+    ticker.set_missed_tick_behavior(MissedTickBehavior::Skip);
+
+    loop {
+        tokio::select! {
+            biased;
+
+            _ = &mut cancel => break,
+
+            _ = ticker.tick() => {
+                if let Ok((elapsed_ns, (draft_tokens, accepted_tokens, drafts))) =
+                    scrape_spec_once(&client, &config, start).await
+                {
+                    // The return value is discarded for the same reason
+                    // per-tick errors are: a dropped tick is a normal
+                    // outcome of best-effort sampling, and whether this
+                    // one was kept is not a fact the loop acts on.
+                    timeline.push(elapsed_ns, draft_tokens, accepted_tokens, drafts);
+                }
+            }
+        }
+    }
+
+    timeline
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -470,5 +577,153 @@ mod tests {
             assert_eq!(s.prefill_ns, Some(14493));
             assert_eq!(s.decode_ns, Some(28432));
         }
+    }
+
+    /// A body from a server started with a speculative config. The
+    /// non-speculative FIXTURE above is kept as the other case: both are
+    /// real vLLM shapes, and the difference between them is a run flag.
+    const SPEC_FIXTURE: &str = include_str!("../tests/fixtures/vllm-spec-decode-exposition.txt");
+
+    #[tokio::test]
+    async fn scrape_spec_once_reads_the_three_counters() {
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path("/metrics"))
+            .respond_with(ResponseTemplate::new(200).set_body_string(SPEC_FIXTURE))
+            .mount(&server)
+            .await;
+
+        let config = MetricsConfig::new(
+            format!("{}/metrics", server.uri()),
+            "Qwen/Qwen2.5-7B-Instruct",
+            Engine::Vllm,
+        );
+        let client = build_client().unwrap();
+        let (_, (draft, accepted, drafts)) = scrape_spec_once(&client, &config, Instant::now())
+            .await
+            .unwrap();
+
+        assert_eq!(draft, Some(640));
+        assert_eq!(accepted, Some(384));
+        assert_eq!(drafts, Some(128));
+    }
+
+    #[tokio::test]
+    async fn scrape_spec_once_on_a_non_speculating_body_is_not_an_error() {
+        // ADR-016 D1 at the I/O boundary: a server without a speculative
+        // config answers 200 with a body carrying none of the three, and
+        // that is a successful scrape of a run that did not speculate.
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path("/metrics"))
+            .respond_with(ResponseTemplate::new(200).set_body_string(FIXTURE))
+            .mount(&server)
+            .await;
+
+        let config = MetricsConfig::new(
+            format!("{}/metrics", server.uri()),
+            "Qwen/Qwen2.5-7B-Instruct",
+            Engine::Vllm,
+        );
+        let client = build_client().unwrap();
+        let (_, reading) = scrape_spec_once(&client, &config, Instant::now())
+            .await
+            .unwrap();
+
+        assert_eq!(reading, (None, None, None));
+    }
+
+    #[tokio::test]
+    async fn scrape_spec_once_surfaces_non_success_status() {
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path("/metrics"))
+            .respond_with(ResponseTemplate::new(503))
+            .mount(&server)
+            .await;
+
+        let config = MetricsConfig::new(
+            format!("{}/metrics", server.uri()),
+            "Qwen/Qwen2.5-7B-Instruct",
+            Engine::Vllm,
+        );
+        let client = build_client().unwrap();
+        let err = scrape_spec_once(&client, &config, Instant::now())
+            .await
+            .unwrap_err();
+
+        assert!(matches!(err, MetricsError::Status { status: 503 }));
+    }
+
+    #[tokio::test]
+    async fn scrape_spec_during_returns_empty_timeline_if_cancelled_immediately() {
+        let (tx, rx) = oneshot::channel();
+        let config = MetricsConfig::new("http://127.0.0.1:1/metrics", "m", Engine::Vllm);
+        tx.send(()).unwrap();
+        let timeline = scrape_spec_during(config, Instant::now(), rx).await;
+        assert!(timeline.is_empty());
+    }
+
+    #[tokio::test]
+    async fn scrape_spec_during_collects_samples_until_cancelled() {
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path("/metrics"))
+            .respond_with(ResponseTemplate::new(200).set_body_string(SPEC_FIXTURE))
+            .mount(&server)
+            .await;
+
+        let config = MetricsConfig::with_period(
+            format!("{}/metrics", server.uri()),
+            "Qwen/Qwen2.5-7B-Instruct",
+            Engine::Vllm,
+            std::time::Duration::from_millis(20),
+        );
+        let (tx, rx) = oneshot::channel();
+        let handle = tokio::spawn(scrape_spec_during(config, Instant::now(), rx));
+
+        tokio::time::sleep(std::time::Duration::from_millis(90)).await;
+        tx.send(()).unwrap();
+        let timeline = handle.await.unwrap();
+
+        assert!(
+            !timeline.is_empty(),
+            "expected at least one sample over ~90ms at 20ms cadence"
+        );
+        for s in &timeline.samples {
+            assert_eq!(s.draft_tokens, 640);
+            assert_eq!(s.accepted_tokens, 384);
+            assert_eq!(s.drafts, 128);
+        }
+    }
+
+    #[tokio::test]
+    async fn a_non_speculating_engine_yields_an_empty_timeline_through_push() {
+        // The route that distinguishes this loop from the other two: every
+        // tick succeeds, every tick is dropped, and the timeline is empty
+        // without a single error having occurred. An engine that fails to
+        // answer produces the same empty timeline by the other route, and
+        // the report does not claim to tell them apart (ADR-016 D2).
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path("/metrics"))
+            .respond_with(ResponseTemplate::new(200).set_body_string(FIXTURE))
+            .mount(&server)
+            .await;
+
+        let config = MetricsConfig::with_period(
+            format!("{}/metrics", server.uri()),
+            "Qwen/Qwen2.5-7B-Instruct",
+            Engine::Vllm,
+            std::time::Duration::from_millis(20),
+        );
+        let (tx, rx) = oneshot::channel();
+        let handle = tokio::spawn(scrape_spec_during(config, Instant::now(), rx));
+
+        tokio::time::sleep(std::time::Duration::from_millis(90)).await;
+        tx.send(()).unwrap();
+        let timeline = handle.await.unwrap();
+
+        assert!(timeline.is_empty());
     }
 }
