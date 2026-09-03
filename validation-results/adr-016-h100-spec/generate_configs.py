@@ -22,8 +22,14 @@ import json
 from pathlib import Path
 
 K = 5
-TARGET = "meta-llama/Llama-3.1-8B-Instruct"
-DRAFT = "meta-llama/Llama-3.2-1B-Instruct"
+# Qwen rather than Llama, and 3B rather than 7B, both forced by facts checked
+# before any weights were downloaded. The Llama pair is gated on HuggingFace.
+# And within Qwen2.5 the small models carry vocab_size=151936 while 7B and
+# above carry 152064, so a 7B target has no compatible small draft: vLLM's
+# verify_equal_vocab_size_if_draft_model raises on a mismatch under
+# method="draft_model" (config/speculative.py:1774). 3B and 0.5B share 151936.
+TARGET = "Qwen/Qwen2.5-3B-Instruct"
+DRAFT = "Qwen/Qwen2.5-0.5B-Instruct"
 SWEEP = [1.0, 2.0, 3.0, 4.0, 5.0]
 OUT = Path(__file__).parent / "configs"
 

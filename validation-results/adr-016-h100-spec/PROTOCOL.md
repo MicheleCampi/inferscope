@@ -10,8 +10,21 @@
   cost and drafting cost - the quantity the crossover measures - sits
   differently on this part than it would on SXM. Any figure this campaign
   produces is an H100 PCIe figure.
-- **Target**: `meta-llama/Llama-3.1-8B-Instruct`
-- **Draft**: `meta-llama/Llama-3.2-1B-Instruct`, `num_speculative_tokens=5`
+- **Target**: `Qwen/Qwen2.5-3B-Instruct`
+- **Draft**: `Qwen/Qwen2.5-0.5B-Instruct`, `num_speculative_tokens=5`
+
+  Not the Llama pair originally planned. Llama is gated on HuggingFace, and
+  within Qwen2.5 the small models carry `vocab_size=151936` while 7B and above
+  carry 152064 - so a 7B target has no compatible small draft, since vLLM
+  raises on a vocabulary mismatch under `method="draft_model"`. 3B and 0.5B
+  share 151936 and pass the check.
+
+  The scale is smaller than planned but the question is unchanged: the
+  crossover is a ratio between drafting cost and verification cost, and that
+  ratio exists at any scale. It is a 3B/0.5B result and is reported as one.
+  Draft depth is 24 layers against the target's 36, so drafting is not a
+  negligible fraction of verification here - which is the regime where a
+  crossover is likelier to fall inside the swept interval.
 
 Everything below is fixed before the first run. Criteria written after seeing
 data are selection, not criteria.
