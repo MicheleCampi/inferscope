@@ -2,7 +2,14 @@
 
 - **Status**: Declared, not yet run
 - **Date**: 2026-09-03
-- **Hardware**: 1x H100, single GPU
+- **Hardware**: 1x H100 PCIe (80GB), single GPU, Ubuntu 24.04
+
+  PCIe rather than SXM, and the distinction is not cosmetic here: HBM
+  bandwidth is roughly 2.0 TB/s against SXM's 3.35, and TDP is 350W against
+  700W. Decode is memory-bandwidth-bound, so the ratio between verification
+  cost and drafting cost - the quantity the crossover measures - sits
+  differently on this part than it would on SXM. Any figure this campaign
+  produces is an H100 PCIe figure.
 - **Target**: `meta-llama/Llama-3.1-8B-Instruct`
 - **Draft**: `meta-llama/Llama-3.2-1B-Instruct`, `num_speculative_tokens=5`
 
@@ -69,6 +76,30 @@ does not remove drift; it stops drift from correlating with L.
 
 Between runs, a fixed cooldown, and the server is restarted for each config
 (the speculative config is not hot-swappable).
+
+## Sessions are indivisible
+
+A session is the unit the baselines validate: they open it and close it, and
+discard criterion 1 compares them. Every run inside one session is therefore
+comparable to every other; runs in different sessions are not. A different
+session may be a different physical card and is certainly a different thermal
+state, so a crossover assembled from two half-sessions would rest on a
+comparison the baselines never checked.
+
+Stage one runs whole or not at all. The GPU may be released between stages,
+and each stage carries its own opening and closing baseline.
+
+If measured timings from the pilot show stage one will not fit a single
+session, the correction is to drop sweep points - four instead of five - not
+to split the session. A shorter stage that is internally valid beats a
+complete one that is not.
+
+Planned sessions:
+
+1. Pilot, one point (`L3.00-minvar`), to confirm the knob takes effect and to
+   measure real server-start and warm-up times. Not part of the campaign data.
+2. Stage one, whole, 11 runs.
+3. Stage two, whole, after stage one is analysed.
 
 ## Per-run measurement
 
