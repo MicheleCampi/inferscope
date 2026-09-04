@@ -16,18 +16,38 @@ INFERSCOPE="${INFERSCOPE:-$HOME/inferscope/target/release/inferscope}"
 
 TARGET="Qwen/Qwen2.5-3B-Instruct"
 PORT=8000
-WARMUP_S=60
-SAMPLE_S=180
-COOLDOWN_S=45
-REQ_RATE=3
-NUM_PROMPTS=800      # 240s of load at 3 req/s, with margin: the load must
-                     # outlive the window, not finish inside it
-INPUT_LEN=512
-OUTPUT_LEN=256
-SEED=20260903
+# Overridable so a shortened rehearsal can exercise the whole flow without
+# editing the file the real session runs. The defaults are the protocol's.
+WARMUP_S="${WARMUP_S:-60}"
+SAMPLE_S="${SAMPLE_S:-180}"
+COOLDOWN_S="${COOLDOWN_S:-45}"
+REQ_RATE="${REQ_RATE:-3}"
+NUM_PROMPTS="${NUM_PROMPTS:-800}"   # 240s of load at 3 req/s, with margin:
+                                    # the load must outlive the window, not
+                                    # finish inside it
+INPUT_LEN="${INPUT_LEN:-512}"
+OUTPUT_LEN="${OUTPUT_LEN:-256}"
+SEED="${SEED:-20260903}"
+STARTUP_TIMEOUT_TICKS="${STARTUP_TIMEOUT_TICKS:-60}"
+
+echo "params: warmup=${WARMUP_S}s window=${SAMPLE_S}s cooldown=${COOLDOWN_S}s"
+if [[ "$WARMUP_S" != "60" || "$SAMPLE_S" != "180" ]]; then
+    echo "WARNING: non-default timings — this is a rehearsal, not campaign data"
+fi
 
 mkdir -p "$OUT"
 exec > >(tee -a "$OUT/session.log") 2>&1
+
+# --gpu only exists when inferscope was built with --features gpu-nvidia, and
+# a binary built without it reports no energy at all - which is the whole
+# measurement. Checking here costs a second; discovering it at analysis costs
+# the session.
+if ! "$INFERSCOPE" --help 2>&1 | grep -q -- "--gpu"; then
+    echo "FATAL: $INFERSCOPE has no --gpu flag."
+    echo "It was built without --features gpu-nvidia and cannot measure energy."
+    echo "Rebuild on this host: cargo build --release --features gpu-nvidia"
+    exit 1
+fi
 
 echo "=== ADR-016 stage one — $(date -Is) ==="
 echo "seed=$SEED rate=$REQ_RATE prompts=$NUM_PROMPTS warmup=${WARMUP_S}s window=${SAMPLE_S}s"
@@ -53,7 +73,7 @@ start_server() {
             > "$OUT/server.log" 2>&1 < /dev/null &
     fi
     disown
-    for _ in $(seq 1 60); do
+    for _ in $(seq 1 "$STARTUP_TIMEOUT_TICKS"); do
         sleep 5
         if [[ "$(curl -s -o /dev/null -w '%{http_code}' "http://127.0.0.1:$PORT/v1/models")" == "200" ]]; then
             elapsed=$(( $(date +%s) - t0 ))
@@ -91,6 +111,11 @@ for i in "${!RUNS[@]}"; do
     start_server "$cfg" || { echo "    run $n ABORTED"; continue; }
 
     PID="$(pgrep -f '[v]llm serve' | head -1)"
+    if [[ -z "$PID" ]]; then
+        echo "    NO SERVER PID — aborting the session"
+        stop_server
+        exit 1
+    fi
 
     # Load first, sampling starts after the warm-up has passed.
     nohup "$VENV/bin/vllm" bench serve --backend openai-chat \
@@ -108,7 +133,19 @@ for i in "${!RUNS[@]}"; do
         --metrics-endpoint "http://127.0.0.1:$PORT/metrics" \
         --engine vllm --model "$TARGET" \
         > "$OUT/$name.json" 2> "$OUT/$name.err"
-    echo "    exit $?"
+    rc=$?
+
+    # A run that produced no readable report fails discard criterion 5, which
+    # invalidates the whole session. Continuing would spend the remaining GPU
+    # time producing data that has already been discarded, and the emptiness
+    # would surface only at analysis.
+    if [[ $rc -ne 0 ]] || [[ ! -s "$OUT/$name.json" ]]; then
+        echo "    RUN PRODUCED NO REPORT (exit $rc) — aborting the session"
+        sed -n '1,5p' "$OUT/$name.err"
+        stop_server
+        exit 1
+    fi
+    echo "    exit $rc, $(wc -c < "$OUT/$name.json") bytes"
 
     # The load must still be running when the window closes. If it finished
     # early, the tail of the window measured an idle GPU (discard criterion 4).
