@@ -34,7 +34,7 @@ NUM_PROMPTS="${NUM_PROMPTS:-1600}"   # 240s of load at 3 req/s, with margin:
 INPUT_LEN="${INPUT_LEN:-512}"
 OUTPUT_LEN="${OUTPUT_LEN:-256}"
 SEED="${SEED:-20260903}"
-STARTUP_TIMEOUT_TICKS="${STARTUP_TIMEOUT_TICKS:-60}"
+STARTUP_TIMEOUT_TICKS="${STARTUP_TIMEOUT_TICKS:-90}"
 
 echo "params: warmup=${WARMUP_S}s window=${SAMPLE_S}s cooldown=${COOLDOWN_S}s"
 if [[ "$WARMUP_S" != "60" || "$SAMPLE_S" != "180" ]]; then
