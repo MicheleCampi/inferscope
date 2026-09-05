@@ -59,8 +59,8 @@ figures, and at zero acceptance both say speculation did nothing.
 Checked at source before drawing the conclusion, because the L=1.00 figure is
 the kind of result that is usually an artefact:
 
-- **The denominator is clean.** Generated tokens are constant within 0.7%
-  across all eleven runs (130003 to 131723). The counter does not include
+- **The denominator is clean.** Generated tokens are constant within 1.32%
+  across all eleven runs (130003 to 131723, a 1.32% spread). The counter does not include
   draft tokens.
 - **The scheduler budget is the same.** `_set_max_num_scheduled_tokens`
   (config/vllm.py:1909) sets it equal to `max_num_batched_tokens` and never
