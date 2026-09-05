@@ -14,6 +14,12 @@ OUT="${1:?usage: run_stage_one.sh <results-dir>}"
 VENV="${VENV:-$HOME/venv}"
 INFERSCOPE="${INFERSCOPE:-$HOME/inferscope/target/release/inferscope}"
 
+# torch invokes ninja as an executable when it compiles kernels at engine
+# start, and finds it on PATH rather than in the venv it was pip-installed
+# into. Without this the engine dies with FileNotFoundError: 'ninja' and the
+# server never comes up.
+export PATH="$VENV/bin:$PATH"
+
 TARGET="Qwen/Qwen2.5-3B-Instruct"
 PORT=8000
 # Overridable so a shortened rehearsal can exercise the whole flow without
@@ -86,7 +92,8 @@ start_server() {
             return 0
         fi
     done
-    echo "    SERVER FAILED TO START"
+    echo "    SERVER FAILED TO START — aborting the session"
+    grep -m 3 -E "Error|Traceback|FileNotFoundError" "$OUT/server.log" 2>/dev/null
     return 1
 }
 
@@ -112,7 +119,11 @@ for i in "${!RUNS[@]}"; do
     echo
     echo "--- run $n/${#RUNS[@]}: $name  $(date -Is) ---"
     stop_server
-    start_server "$cfg" || { echo "    run $n ABORTED"; continue; }
+    # A run whose server never came up produces no report, which fails discard
+    # criterion 5 and invalidates the session. Continuing would spend the rest
+    # of the GPU time on data that is already discarded — which is exactly what
+    # happened on the first launch: two runs burned before anyone looked.
+    start_server "$cfg" || { stop_server; exit 1; }
 
     PID="$(pgrep -f '[v]llm serve' | head -1)"
     if [[ -z "$PID" ]]; then
