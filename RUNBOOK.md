@@ -286,6 +286,38 @@ Before trusting a build with this feature, confirm it compiles: `cargo build --r
 
 ---
 
+## Scenario 9 — Speculative section empty, and no error anywhere
+
+The run completes, the report has GPU and phase data, and `spec_timeline` is either absent from the JSON or present with zero samples. Nothing was logged, no scrape failed, and the exit code is 0.
+
+### Detection
+- `--json` output contains no `spec_timeline` key at all, or `"spec_timeline": {"sample_period_ns": N, "samples": []}`.
+- stderr carries no `spec scrape task ended abnormally` warning.
+- The other scraped sections (`phase_timeline`, and `kvcache_timeline` on the probe path) are populated normally.
+
+### Diagnosis (2 minutes)
+1. Distinguish absent from empty. Absent means no `--metrics-endpoint` was passed: the scrape was never spawned. Empty means it ran and every tick was dropped. These are different problems.
+2. Confirm the engine is speculating: `curl -s <endpoint>/metrics | grep spec_decode`. Three `_total` counter families should appear. If the output is empty, the server was started without a speculative config and there is nothing to measure.
+3. Confirm the `model_name` label matches `--model` exactly: `curl -s <endpoint>/metrics | grep spec_decode_num_drafts_total`. The label value must be byte-identical to what `--model` was given, including any org prefix.
+4. Confirm the engine is vLLM. SGLang exposes speculative decoding only as gauges, which cannot be differenced over a window, so its schema declares the family absent (ADR-014, ADR-016 D1). An empty section on SGLang is correct behaviour, not a fault.
+
+### Fix
+- Server not speculating: restart it with a speculative config, e.g. `--speculative-config '{"method": "ngram", "num_speculative_tokens": 5, ...}'`. Verify with step 2 before re-running.
+- Label mismatch: pass the served model name exactly as the endpoint labels it. `--model Qwen/Qwen2.5-7B-Instruct` and `--model qwen2.5-7b` are not interchangeable, and a mismatch drops every tick silently — the same failure mode the KV and phase scrapes have.
+- SGLang: no fix. The capability is not there, and the empty section says so.
+
+### Root cause
+Two distinct absences collapse onto the same empty timeline by design (ADR-016 D1, D2). vLLM's `SpecDecodingProm.__init__` returns before registering any counter when the engine has no speculative config, so a non-speculating server emits none of these lines while its schema still declares them. Rather than treat that as a defective body, the parser reads it as absence — which is also what an engine without the capability produces, and what an endpoint that never answered produces. All three routes end at an empty timeline, and inferscope does not claim to tell them apart. That is deliberate: the only fact common to all three is that this run produced no speculative measurement, and that is what the report states.
+
+The cost of that choice is exactly this scenario, which is why it has a runbook entry.
+
+### Prevention
+Before a campaign run, check the endpoint once: `curl -s <endpoint>/metrics | grep -c spec_decode_num_drafts_total` should return 1 or more. Scripted sweeps should assert this before starting the load generator, since a whole sweep can otherwise complete with every report empty and every exit code 0.
+
+For campaign runs specifically, note that `--sample-only` carries the phase and speculative scrapes but **not** the KV scrape. A run on that path will always show an absent `kvcache_timeline`; that is a known gap, not a symptom of this scenario.
+
+---
+
 ## Cross-cutting diagnostics
 
 When in doubt, inspect the raw JSON output rather than the plain-text report. The plain-text report aggregates; the JSON preserves every sample, every timestamp, every NVML query result.
@@ -306,3 +338,4 @@ For build issues, `cargo build --release --features gpu-nvidia --verbose` shows 
 
 - **2026-05-24**: Initial runbook published. Reflects v0.2.1 with `--include-descendants`, `gpu-nvidia` feature, Dockerfile multi-stage. Seven scenarios based on failure modes observed during L4 (RunPod), H100 (RunPod), 4×A40 multi-GPU (RunPod), and vLLM 0.21 (RunPod) validation runs over May 2026.
 - **2026-05-26**: Added Scenario 8 for OpenTelemetry export failure, covering the `--otel-endpoint` flag introduced post-v0.3.0 (ADR-008). Scenario derived from local Jaeger validation and from the predictable transport-layer failure modes; no production OTel incidents have been observed yet.
+- **2026-09-03**: Added Scenario 9 for an empty speculative section, covering the counters introduced by ADR-016. Derived from reading vLLM's `SpecDecodingProm` at `27a94d1` and from inferscope's own absence semantics, not from an observed incident: no speculative run has yet been measured on hardware, and the diagnosis steps are untested against a live speculating server.

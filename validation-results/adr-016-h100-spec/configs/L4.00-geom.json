@@ -1,0 +1,13 @@
+{
+  "method": "draft_model",
+  "model": "Qwen/Qwen2.5-0.5B-Instruct",
+  "num_speculative_tokens": 5,
+  "rejection_sample_method": "synthetic",
+  "synthetic_acceptance_rates": [
+    0.834323,
+    0.696094,
+    0.580767,
+    0.484547,
+    0.404269
+  ]
+}

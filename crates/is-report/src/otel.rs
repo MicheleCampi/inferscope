@@ -325,6 +325,7 @@ mod tests {
             kvcache_timeline: None,
             kvcache: None,
             phase_timeline: None,
+            spec_timeline: None,
             phase_energy: None,
             reference_instant_unix_ns: None,
             trajectory: None,

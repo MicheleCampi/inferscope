@@ -28,6 +28,7 @@ left intact as a historical record.
 | [ADR-013](013-trajectory-level-attribution.md) | Trajectory-Level Energy and Cache Attribution for Agentic Workloads | Accepted |
 | [ADR-014](014-multi-engine-metric-schema.md) | Multi-Engine Metric Schema (vLLM + SGLang) | Accepted |
 | [ADR-015](015-cost-attribution-per-step.md) | Cost Attribution per Trajectory Step | Accepted |
+| [ADR-016](016-speculative-decoding-energy.md) | Speculative Decoding Energy Attribution | Accepted |
 
 ## Format
 

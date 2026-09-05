@@ -55,6 +55,16 @@ pub struct ResourceReport {
     /// energy was sampled, or either apportionment basis had a zero delta.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub phase_energy: Option<PhaseEnergyMetrics>,
+    /// The raw speculative-decoding timeline scraped during the sampling
+    /// window, if `--metrics-endpoint` was supplied (ADR-016). This is
+    /// the campaign path: a speculative run is driven by an external
+    /// load generator against a server started with a speculative
+    /// config, and inferscope attaches to its PID (ADR-016 D6).
+    ///
+    /// `None` when no endpoint was configured; empty when the engine was
+    /// not speculating.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub spec_timeline: Option<is_core::SpecTimeline>,
     /// Derived per-step trajectory attribution over the sampling
     /// window, if a step file was supplied and the join was valid
     /// (ADR-013). `None` when no steps were provided, the anchor is
@@ -92,6 +102,7 @@ mod tests {
             resource: None,
             gpu: None,
             phase_timeline: None,
+            spec_timeline: None,
             phase_energy: Some(PhaseEnergyMetrics {
                 prefill_ns_delta: Some(14493),
                 decode_ns_delta: Some(28432),
@@ -122,12 +133,14 @@ mod tests {
             resource: None,
             gpu: None,
             phase_timeline: None,
+            spec_timeline: None,
             phase_energy: None,
             trajectory: None,
             schema_version: None,
         };
         let json = render_resource_json(&report).unwrap();
         assert!(!json.contains("phase_timeline"));
+        assert!(!json.contains("spec_timeline"));
         assert!(!json.contains("phase_energy"));
         // And a pre-ADR-012 JSON without the fields still deserialises.
         let legacy = serde_json::to_string(&serde_json::json!({
@@ -141,5 +154,53 @@ mod tests {
         .unwrap();
         let back: ResourceReport = serde_json::from_str(&legacy).unwrap();
         assert_eq!(back, report);
+    }
+
+    #[test]
+    fn a_populated_spec_timeline_survives_a_round_trip() {
+        // The absence case is covered above; this is the presence case,
+        // and it is the one a campaign depends on. Every figure the
+        // campaign reports is derived from an archived JSON, so a field
+        // that serializes but does not come back would lose the
+        // measurement between the run and the analysis.
+        let mut timeline = is_core::SpecTimeline::new(1_000_000_000);
+        timeline.push(1_292_378, Some(640), Some(384), Some(128));
+        timeline.push(2_301_004, Some(1280), Some(768), Some(256));
+
+        let report = ResourceReport {
+            reference_instant_unix_ns: None,
+            pid: 1,
+            include_descendants: false,
+            sample_period_ms: 100,
+            duration_secs: 1,
+            resource: None,
+            gpu: None,
+            phase_timeline: None,
+            phase_energy: None,
+            spec_timeline: Some(timeline),
+            trajectory: None,
+            schema_version: None,
+        };
+
+        let json = render_resource_json(&report).unwrap();
+        let back: ResourceReport = serde_json::from_str(&json).unwrap();
+        assert_eq!(report.spec_timeline, back.spec_timeline);
+
+        // And stable under a second pass, so the archived form is a
+        // fixed point rather than merely readable once.
+        let again: ResourceReport =
+            serde_json::from_str(&render_resource_json(&back).unwrap()).unwrap();
+        assert_eq!(back.spec_timeline, again.spec_timeline);
+
+        let st = back.spec_timeline.unwrap();
+        assert_eq!(st.samples.len(), 2);
+        assert_eq!(st.samples[0].draft_tokens, 640);
+        assert_eq!(st.samples[0].accepted_tokens, 384);
+        assert_eq!(st.samples[0].drafts, 128);
+        // 1 + 384/128 = 4.0, the convention ADR-016 D4 records.
+        assert_eq!(
+            1.0 + st.samples[0].accepted_tokens as f64 / st.samples[0].drafts as f64,
+            4.0
+        );
     }
 }

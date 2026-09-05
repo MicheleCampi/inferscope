@@ -386,6 +386,7 @@ mod tests {
             kvcache_timeline: None,
             kvcache: None,
             phase_timeline: None,
+            spec_timeline: None,
             phase_energy: None,
             trajectory: Some(trajectory()),
             schema_version: Some(crate::metrics::REPORT_SCHEMA_VERSION),

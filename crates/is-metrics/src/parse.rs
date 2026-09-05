@@ -246,6 +246,71 @@ fn parse_phase_time(
     parse_seconds_as_nanos(body, metric, model_name).map(Some)
 }
 
+/// Reads a series the schema may not declare at all.
+///
+/// The sibling of [`parse_phase_time`] for a full [`Series`] rather than a
+/// bare name, and it carries one more case. `parse_phase_time` treats an
+/// undeclared family as a capability gap and a declared-but-absent one as a
+/// defective body. For the speculative family that second half does not
+/// hold: `SpecDecodingProm.__init__` returns before registering any counter
+/// when the engine was started without a speculative config, so a vLLM
+/// endpoint that is not speculating emits none of these lines while still
+/// declaring them in its schema (ADR-016 D1).
+///
+/// Both absences therefore collapse onto `Ok(None)`: the engine has no such
+/// capability, or it has it and this run did not enable it. From the
+/// reader's side they are one fact — this run produced no speculative
+/// measurement — and neither is a zero. `Err` keeps the meaning it has
+/// everywhere else in this module: a line that exists and does not parse.
+fn parse_optional_series(
+    body: &str,
+    series: Option<Series>,
+    model_name: &str,
+) -> Result<Option<u64>, MetricsError> {
+    let Some(series) = series else {
+        return Ok(None);
+    };
+    parse_series(body, &series, model_name)
+}
+
+/// One reading of the speculative-decoding family: draft tokens, accepted
+/// tokens, rounds — in that order.
+///
+/// Named rather than left as a bare tuple for two reasons. The three are one
+/// capability and travel together from the parser to
+/// [`is_core::SpecTimeline::push`], so the trio is the unit the code actually
+/// passes around. And they are three `Option<u64>` in a row: the compiler
+/// cannot tell them apart, so a transposition at any call site would be
+/// silent, and the report would carry an acceptance rate above one or an
+/// acceptance length below one with nothing to flag it.
+pub type SpecReading = (Option<u64>, Option<u64>, Option<u64>);
+
+/// Parses the three speculative-decoding counters from a text-exposition
+/// body (ADR-016).
+///
+/// Returns `(draft_tokens, accepted_tokens, drafts)`, each independently
+/// optional. None of the three is required: the trio is one capability, and
+/// deciding what a partial read means belongs to
+/// [`is_core::SpecTimeline::push`], which drops the tick rather than let a
+/// missing counter be read as a zero.
+///
+/// A body from an engine that does not speculate yields `(None, None, None)`
+/// — the ordinary outcome on any run without a speculative config, not a
+/// failure. This is the deliberate divergence from [`parse_phase`], whose
+/// declared-but-absent series remains an error (ADR-016 D1).
+pub fn parse_spec(
+    body: &str,
+    model_name: &str,
+    engine: Engine,
+) -> Result<SpecReading, MetricsError> {
+    let schema = engine.schema();
+    Ok((
+        parse_optional_series(body, schema.spec_draft_tokens, model_name)?,
+        parse_optional_series(body, schema.spec_accepted_tokens, model_name)?,
+        parse_optional_series(body, schema.spec_drafts, model_name)?,
+    ))
+}
+
 /// Parses both KV-cache counters from a text-exposition body.
 ///
 /// Returns `(hits, queries)` for the given model, with the series named by
@@ -357,6 +422,15 @@ mod tests {
     /// schema spelled with the name vLLM *registers* matches nothing.
     const VLLM_EXPOSITION: &str =
         include_str!("../tests/fixtures/vllm-prometheus-client-exposition.txt");
+
+    /// The same shape, from a server started *with* a speculative config.
+    /// Internally consistent with vLLM's own resolution: 128 drafts at k=5
+    /// give 640 draft tokens, 384 accepted, so a realized mean acceptance
+    /// length of exactly 4.0 including the bonus token (ADR-016 D4). The
+    /// per-position lines sum to the accepted total.
+    const VLLM_SPEC: &str = include_str!("../tests/fixtures/vllm-spec-decode-exposition.txt");
+
+    const SPEC_MODEL: &str = "Qwen/Qwen2.5-7B-Instruct";
 
     #[test]
     fn kvcache_parses_against_a_prometheus_client_body() {
@@ -643,5 +717,87 @@ mod tests {
         assert_eq!(generation_tokens, 512);
         assert_eq!(prefill_ns, None);
         assert_eq!(decode_ns, None);
+    }
+
+    #[test]
+    fn spec_reads_the_three_counters() {
+        let (draft, accepted, drafts) = parse_spec(VLLM_SPEC, SPEC_MODEL, Engine::Vllm).unwrap();
+        assert_eq!(draft, Some(640));
+        assert_eq!(accepted, Some(384));
+        assert_eq!(drafts, Some(128));
+    }
+
+    #[test]
+    fn spec_on_a_non_speculating_vllm_is_absence_not_error() {
+        // The divergence from parse_phase, and the whole of ADR-016 D1.
+        // SpecDecodingProm.__init__ returns before registering anything
+        // when speculative_config is None, so this body — a real vLLM
+        // exposition — carries none of the three. That is a server not
+        // speculating, not a defective body.
+        let (draft, accepted, drafts) =
+            parse_spec(VLLM_EXPOSITION, "Qwen/Qwen2.5-7B-Instruct", Engine::Vllm).unwrap();
+        assert_eq!(draft, None);
+        assert_eq!(accepted, None);
+        assert_eq!(drafts, None);
+    }
+
+    #[test]
+    fn the_same_body_still_errors_on_a_declared_phase_series() {
+        // The other half of D1: the divergence is scoped to the
+        // speculative family. parse_phase keeps its contract on the very
+        // body parse_spec reads as absent, so this is not a general
+        // loosening of the schema's promise.
+        let body = "vllm:prompt_tokens_total{model_name=\"m\"} 10\n\
+                    vllm:generation_tokens_total{model_name=\"m\"} 5\n";
+        assert!(parse_spec(body, "m", Engine::Vllm).unwrap() == (None, None, None));
+        assert!(matches!(
+            parse_phase(body, "m", Engine::Vllm).unwrap_err(),
+            MetricsError::Parse { .. }
+        ));
+    }
+
+    #[test]
+    fn spec_on_sglang_is_absence_by_schema() {
+        // The other absence that collapses onto Ok(None): SGLang exposes
+        // the family as gauges, which window differencing cannot read, so
+        // the schema declares None (ADR-014, ADR-016 D1).
+        let (draft, accepted, drafts) =
+            parse_spec(SGLANG_PER_SOURCE, SGLANG_MODEL, SGLANG).unwrap();
+        assert_eq!(draft, None);
+        assert_eq!(accepted, None);
+        assert_eq!(drafts, None);
+    }
+
+    #[test]
+    fn the_per_pos_family_is_not_read_as_accepted_tokens() {
+        // Same trap _created posed, same defence: the exact match on the
+        // text before `{` excludes a longer name. Reading the per-position
+        // family here would report 128 accepted tokens instead of 384,
+        // because Aggregation::Single takes the first match (ADR-016 D5).
+        assert!(VLLM_SPEC.contains("vllm:spec_decode_num_accepted_tokens_per_pos_total"));
+        let v = parse_series(
+            VLLM_SPEC,
+            &VLLM_SCHEMA.spec_accepted_tokens.unwrap(),
+            SPEC_MODEL,
+        )
+        .unwrap();
+        assert_eq!(v, Some(384));
+    }
+
+    #[test]
+    fn spec_created_lines_are_not_read_as_counters() {
+        assert!(VLLM_SPEC.contains("vllm:spec_decode_num_drafts_created"));
+        let (_, _, drafts) = parse_spec(VLLM_SPEC, SPEC_MODEL, Engine::Vllm).unwrap();
+        assert_eq!(drafts, Some(128));
+    }
+
+    #[test]
+    fn spec_does_not_cross_models() {
+        // The second model on the body carries 45/27/9 and must not leak.
+        let (draft, accepted, drafts) =
+            parse_spec(VLLM_SPEC, "meta-llama/Llama-3.1-8B", Engine::Vllm).unwrap();
+        assert_eq!(draft, Some(45));
+        assert_eq!(accepted, Some(27));
+        assert_eq!(drafts, Some(9));
     }
 }

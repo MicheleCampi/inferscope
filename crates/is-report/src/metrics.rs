@@ -423,6 +423,17 @@ pub struct Report {
     /// delta.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub phase_energy: Option<PhaseEnergyMetrics>,
+    /// The raw speculative-decoding timeline as scraped from the
+    /// engine's Prometheus endpoint, if any (ADR-016). `None` when no
+    /// metrics endpoint was configured; empty when the endpoint was
+    /// scraped and the engine was not speculating, which is the same
+    /// outcome an unreachable endpoint gives and is not distinguished
+    /// here (ADR-016 D1).
+    ///
+    /// No derived counterpart yet: this seam carries the raw counters
+    /// so a run can be measured, and the derivation is separate work.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub spec_timeline: Option<is_core::SpecTimeline>,
     /// Wall-clock UTC unix-epoch nanoseconds of the ADR-003 reference
     /// instant, captured at run start (ADR-013). Maps the relative
     /// `elapsed_ns` timeline onto absolute time, enabling the offline
@@ -522,6 +533,7 @@ mod tests {
             kvcache_timeline: None,
             kvcache: None,
             phase_timeline: None,
+            spec_timeline: None,
             phase_energy: None,
             trajectory: None,
             schema_version: Some(REPORT_SCHEMA_VERSION),
@@ -566,6 +578,7 @@ mod tests {
             kvcache_timeline: None,
             kvcache: None,
             phase_timeline: None,
+            spec_timeline: None,
             phase_energy: None,
             trajectory: None,
             schema_version: Some(crate::metrics::REPORT_SCHEMA_VERSION),

@@ -1,0 +1,104 @@
+=== ADR-016 stage one — 2026-09-05T13:43:59+00:00 ===
+seed=20260903 rate=3 prompts=1600 warmup=60s window=180s
+run order:
+  1. BASELINE
+  2. L4.00-geom.json
+  3. L4.00-minvar.json
+  4. L5.00-minvar.json
+  5. L3.00-geom.json
+  6. L1.00-minvar.json
+  7. L5.00-geom.json
+  8. L2.00-geom.json
+  9. L3.00-minvar.json
+  10. L2.00-minvar.json
+  11. BASELINE
+
+--- run 1/11: baseline-open  2026-09-05T13:43:59+00:00 ---
+    server ready in 45s
+    warm-up 60s
+    sampling 180s
+    exit 0, 36577 bytes
+    cooldown 45s
+
+--- run 2/11: L4.00-geom  2026-09-05T13:49:40+00:00 ---
+    server ready in 45s
+    warm-up 60s
+    sampling 180s
+    exit 0, 62398 bytes
+    cooldown 45s
+
+--- run 3/11: L4.00-minvar  2026-09-05T13:55:21+00:00 ---
+    server ready in 40s
+    warm-up 60s
+    sampling 180s
+    exit 0, 62393 bytes
+    cooldown 45s
+
+--- run 4/11: L5.00-minvar  2026-09-05T14:00:56+00:00 ---
+    server ready in 40s
+    warm-up 60s
+    sampling 180s
+    exit 0, 62372 bytes
+    cooldown 45s
+
+--- run 5/11: L3.00-geom  2026-09-05T14:06:32+00:00 ---
+    server ready in 45s
+    warm-up 60s
+    sampling 180s
+    exit 0, 62409 bytes
+    cooldown 45s
+
+--- run 6/11: L1.00-minvar  2026-09-05T14:12:12+00:00 ---
+    server ready in 46s
+    warm-up 60s
+    sampling 180s
+    exit 0, 61936 bytes
+    cooldown 45s
+
+--- run 7/11: L5.00-geom  2026-09-05T14:17:53+00:00 ---
+    server ready in 35s
+    warm-up 60s
+    sampling 180s
+    exit 0, 62374 bytes
+    cooldown 45s
+
+--- run 8/11: L2.00-geom  2026-09-05T14:23:23+00:00 ---
+    server ready in 40s
+    warm-up 60s
+    sampling 180s
+    exit 0, 62513 bytes
+    cooldown 45s
+
+--- run 9/11: L3.00-minvar  2026-09-05T14:28:59+00:00 ---
+    server ready in 45s
+    warm-up 60s
+    sampling 180s
+    exit 0, 62414 bytes
+    cooldown 45s
+
+--- run 10/11: L2.00-minvar  2026-09-05T14:34:40+00:00 ---
+    server ready in 40s
+    warm-up 60s
+    sampling 180s
+    exit 0, 62503 bytes
+    cooldown 45s
+
+--- run 11/11: baseline-close  2026-09-05T14:40:15+00:00 ---
+    server ready in 40s
+    warm-up 60s
+    sampling 180s
+    exit 0, 36579 bytes
+    cooldown 45s
+
+=== stage one complete — 2026-09-05T14:46:01+00:00 ===
+/home/ubuntu/stage-one/L1.00-minvar.json
+/home/ubuntu/stage-one/L2.00-geom.json
+/home/ubuntu/stage-one/L2.00-minvar.json
+/home/ubuntu/stage-one/L3.00-geom.json
+/home/ubuntu/stage-one/L3.00-minvar.json
+/home/ubuntu/stage-one/L4.00-geom.json
+/home/ubuntu/stage-one/L4.00-minvar.json
+/home/ubuntu/stage-one/L5.00-geom.json
+/home/ubuntu/stage-one/L5.00-minvar.json
+/home/ubuntu/stage-one/baseline-close.json
+/home/ubuntu/stage-one/baseline-open.json

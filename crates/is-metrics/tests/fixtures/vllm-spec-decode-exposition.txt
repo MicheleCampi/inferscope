@@ -1,0 +1,53 @@
+# HELP vllm:prompt_tokens_total Number of prefill tokens processed.
+# TYPE vllm:prompt_tokens_total counter
+vllm:prompt_tokens_total{engine="0",model_name="Qwen/Qwen2.5-7B-Instruct"} 1024.0
+vllm:prompt_tokens_total{engine="0",model_name="meta-llama/Llama-3.1-8B"} 77.0
+# HELP vllm:prompt_tokens_created Number of prefill tokens processed.
+# TYPE vllm:prompt_tokens_created gauge
+vllm:prompt_tokens_created{engine="0",model_name="Qwen/Qwen2.5-7B-Instruct"} 1.7569872011234567e+09
+# HELP vllm:generation_tokens_total Number of generation tokens processed.
+# TYPE vllm:generation_tokens_total counter
+vllm:generation_tokens_total{engine="0",model_name="Qwen/Qwen2.5-7B-Instruct"} 512.0
+vllm:generation_tokens_total{engine="0",model_name="meta-llama/Llama-3.1-8B"} 31.0
+# HELP vllm:generation_tokens_created Number of generation tokens processed.
+# TYPE vllm:generation_tokens_created gauge
+vllm:generation_tokens_created{engine="0",model_name="Qwen/Qwen2.5-7B-Instruct"} 1.7569872011234567e+09
+# HELP vllm:request_prefill_time_seconds Prefill time in seconds.
+# TYPE vllm:request_prefill_time_seconds histogram
+vllm:request_prefill_time_seconds_sum{engine="0",model_name="Qwen/Qwen2.5-7B-Instruct"} 0.0421
+vllm:request_prefill_time_seconds_count{engine="0",model_name="Qwen/Qwen2.5-7B-Instruct"} 8.0
+# HELP vllm:request_decode_time_seconds Decode time in seconds.
+# TYPE vllm:request_decode_time_seconds histogram
+vllm:request_decode_time_seconds_sum{engine="0",model_name="Qwen/Qwen2.5-7B-Instruct"} 1.3847
+vllm:request_decode_time_seconds_count{engine="0",model_name="Qwen/Qwen2.5-7B-Instruct"} 8.0
+# HELP vllm:spec_decode_num_drafts_total Number of spec decoding drafts.
+# TYPE vllm:spec_decode_num_drafts_total counter
+vllm:spec_decode_num_drafts_total{engine="0",model_name="Qwen/Qwen2.5-7B-Instruct"} 128.0
+vllm:spec_decode_num_drafts_total{engine="0",model_name="meta-llama/Llama-3.1-8B"} 9.0
+# HELP vllm:spec_decode_num_drafts_created Number of spec decoding drafts.
+# TYPE vllm:spec_decode_num_drafts_created gauge
+vllm:spec_decode_num_drafts_created{engine="0",model_name="Qwen/Qwen2.5-7B-Instruct"} 1.7569872011234567e+09
+# HELP vllm:spec_decode_num_draft_tokens_total Number of draft tokens.
+# TYPE vllm:spec_decode_num_draft_tokens_total counter
+vllm:spec_decode_num_draft_tokens_total{engine="0",model_name="Qwen/Qwen2.5-7B-Instruct"} 640.0
+vllm:spec_decode_num_draft_tokens_total{engine="0",model_name="meta-llama/Llama-3.1-8B"} 45.0
+# HELP vllm:spec_decode_num_draft_tokens_created Number of draft tokens.
+# TYPE vllm:spec_decode_num_draft_tokens_created gauge
+vllm:spec_decode_num_draft_tokens_created{engine="0",model_name="Qwen/Qwen2.5-7B-Instruct"} 1.7569872011234567e+09
+# HELP vllm:spec_decode_num_accepted_tokens_total Number of accepted tokens.
+# TYPE vllm:spec_decode_num_accepted_tokens_total counter
+vllm:spec_decode_num_accepted_tokens_total{engine="0",model_name="Qwen/Qwen2.5-7B-Instruct"} 384.0
+vllm:spec_decode_num_accepted_tokens_total{engine="0",model_name="meta-llama/Llama-3.1-8B"} 27.0
+# HELP vllm:spec_decode_num_accepted_tokens_created Number of accepted tokens.
+# TYPE vllm:spec_decode_num_accepted_tokens_created gauge
+vllm:spec_decode_num_accepted_tokens_created{engine="0",model_name="Qwen/Qwen2.5-7B-Instruct"} 1.7569872011234567e+09
+# HELP vllm:spec_decode_num_accepted_tokens_per_pos_total Accepted tokens per draft position.
+# TYPE vllm:spec_decode_num_accepted_tokens_per_pos_total counter
+vllm:spec_decode_num_accepted_tokens_per_pos_total{engine="0",model_name="Qwen/Qwen2.5-7B-Instruct",position="0"} 128.0
+vllm:spec_decode_num_accepted_tokens_per_pos_total{engine="0",model_name="Qwen/Qwen2.5-7B-Instruct",position="1"} 128.0
+vllm:spec_decode_num_accepted_tokens_per_pos_total{engine="0",model_name="Qwen/Qwen2.5-7B-Instruct",position="2"} 102.0
+vllm:spec_decode_num_accepted_tokens_per_pos_total{engine="0",model_name="Qwen/Qwen2.5-7B-Instruct",position="3"} 26.0
+vllm:spec_decode_num_accepted_tokens_per_pos_total{engine="0",model_name="Qwen/Qwen2.5-7B-Instruct",position="4"} 0.0
+# HELP vllm:spec_decode_num_accepted_tokens_per_pos_created Accepted tokens per draft position.
+# TYPE vllm:spec_decode_num_accepted_tokens_per_pos_created gauge
+vllm:spec_decode_num_accepted_tokens_per_pos_created{engine="0",model_name="Qwen/Qwen2.5-7B-Instruct",position="0"} 1.7569872011234567e+09
