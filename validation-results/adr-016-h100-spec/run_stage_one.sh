@@ -22,7 +22,7 @@ WARMUP_S="${WARMUP_S:-60}"
 SAMPLE_S="${SAMPLE_S:-180}"
 COOLDOWN_S="${COOLDOWN_S:-45}"
 REQ_RATE="${REQ_RATE:-3}"
-NUM_PROMPTS="${NUM_PROMPTS:-800}"   # 240s of load at 3 req/s, with margin:
+NUM_PROMPTS="${NUM_PROMPTS:-1600}"   # 240s of load at 3 req/s, with margin:
                                     # the load must outlive the window, not
                                     # finish inside it
 INPUT_LEN="${INPUT_LEN:-512}"
