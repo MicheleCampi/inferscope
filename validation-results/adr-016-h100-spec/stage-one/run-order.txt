@@ -1,0 +1,11 @@
+BASELINE
+/home/ubuntu/inferscope/validation-results/adr-016-h100-spec/configs/L4.00-geom.json
+/home/ubuntu/inferscope/validation-results/adr-016-h100-spec/configs/L4.00-minvar.json
+/home/ubuntu/inferscope/validation-results/adr-016-h100-spec/configs/L5.00-minvar.json
+/home/ubuntu/inferscope/validation-results/adr-016-h100-spec/configs/L3.00-geom.json
+/home/ubuntu/inferscope/validation-results/adr-016-h100-spec/configs/L1.00-minvar.json
+/home/ubuntu/inferscope/validation-results/adr-016-h100-spec/configs/L5.00-geom.json
+/home/ubuntu/inferscope/validation-results/adr-016-h100-spec/configs/L2.00-geom.json
+/home/ubuntu/inferscope/validation-results/adr-016-h100-spec/configs/L3.00-minvar.json
+/home/ubuntu/inferscope/validation-results/adr-016-h100-spec/configs/L2.00-minvar.json
+BASELINE

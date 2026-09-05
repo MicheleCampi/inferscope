@@ -1,7 +1,15 @@
 # ADR-016: Speculative Decoding Energy Attribution
 
 - **Status**: Accepted
-- **Validation**: None yet. The raw layer (`SpecSample`, `SpecTimeline`) is
+- **Validation**: Stage one complete, 2026-09-05, 1x H100 PCIe. Eleven runs,
+  session valid (baseline drift 0.13% against a 5% tolerance; realized
+  acceptance length matched the configured value on all nine points). The
+  crossover this ADR set out to find does not exist in L in [1, 6]:
+  speculation is cheaper per committed token at every point, including at
+  zero acceptance, where it still costs 0.897x the baseline. Full figures and
+  the source-level checks behind them in
+  `validation-results/adr-016-h100-spec/RESULTS.md`. Original text below,
+  unedited. The raw layer (`SpecSample`, `SpecTimeline`) is
   built and green against unit tests; the parser, the scrape loop and the
   orchestrator seam are the work this ADR scopes. No speculative run has been
   measured on hardware. The vLLM-side facts this ADR rests on were verified at
