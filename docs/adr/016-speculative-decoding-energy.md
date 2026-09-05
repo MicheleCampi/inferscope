@@ -8,13 +8,16 @@
   speculation is cheaper per committed token at every point, including at
   zero acceptance, where it still costs 0.897x the baseline. Full figures and
   the source-level checks behind them in
-  `validation-results/adr-016-h100-spec/RESULTS.md`. Original text below,
-  unedited. The raw layer (`SpecSample`, `SpecTimeline`) is
-  built and green against unit tests; the parser, the scrape loop and the
-  orchestrator seam are the work this ADR scopes. No speculative run has been
-  measured on hardware. The vLLM-side facts this ADR rests on were verified at
-  source against `vllm-project/vllm` at `27a94d1` (2026-09-02), not inferred
-  from documentation.
+  `validation-results/adr-016-h100-spec/RESULTS.md`.
+- **Validation as of 2026-09-03, when this ADR was written**: none. The raw
+  layer (`SpecSample`, `SpecTimeline`) was built and green against unit tests;
+  the parser, the scrape loop and the orchestrator seam were the work this ADR
+  scoped. No speculative run had been measured on hardware. The vLLM-side
+  facts this ADR rests on were verified at source against
+  `vllm-project/vllm` at `27a94d1` (2026-09-02), not inferred from
+  documentation. Kept as written: the decisions below were taken against that
+  state of knowledge, and reading them without it would make them look better
+  founded than they were.
 - **Date**: 2026-09-03
 - **Deciders**: Michele Campi
 
