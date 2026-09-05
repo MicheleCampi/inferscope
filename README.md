@@ -45,8 +45,11 @@ features are gated behind the `gpu-nvidia` feature flag.
   vLLM's source registers them rather than as its endpoint exposes them,
   so every scrape against real vLLM failed and only the simulator
   answered; the A10 evidence of 2026-07-21 carries zeros for that
-  reason. Fixed in `cd0ece6`, unmeasured until a GPU run says
-  otherwise — see the ADR-011 postscript.
+  reason. Fixed in `cd0ece6`, and still unmeasured after the H100 run
+  of 2026-09-05 for a second reason: that campaign drives load
+  externally and attaches with `--sample-only`, a path that spawns the
+  phase and speculative scrapes but not the KV one. Recorded as a gap
+  in ADR-016, not closed — see the ADR-011 postscript.
   [`validation-results/`](validation-results/) states the bounds of
   each run.
 - **Multi-engine** (v0.5): SGLang is read alongside vLLM (ADR-014).
@@ -59,6 +62,22 @@ features are gated behind the `gpu-nvidia` feature flag.
   fixtures transcribed from SGLang's own collector source and
   cross-checked against its tests; a live scrape against a running
   SGLang server needs a GPU and has not been done.
+- **Speculative decoding** (ADR-016): the three vLLM speculative
+  counters on the same clock as the energy sampler, so what rejected
+  drafts cost can be read in joules rather than inferred from an
+  acceptance rate. Measured on an H100 PCIe on 2026-09-05, with
+  `synthetic_acceptance_rates` making acceptance an independent
+  variable rather than a property of whichever draft model was to hand
+  — eleven runs, baselines opening and closing the session 0.13%
+  apart, realized acceptance length matching the configured value on
+  every point. **No energy crossover exists in the swept range.**
+  Speculation costs less per committed token than not speculating at
+  every acceptance length, including at zero acceptance: 652880 draft
+  tokens computed, none accepted, and the run still committed its
+  tokens at 0.897x the baseline. Figures, the mechanism, and the
+  source-level checks behind the attribution are in
+  [`validation-results/adr-016-h100-spec/RESULTS.md`](validation-results/adr-016-h100-spec/RESULTS.md).
+  One target/draft pair, one workload, one device.
 
 ## What it measures
 
