@@ -42,7 +42,11 @@ exec > >(tee -a "$OUT/session.log") 2>&1
 # a binary built without it reports no energy at all - which is the whole
 # measurement. Checking here costs a second; discovering it at analysis costs
 # the session.
-if ! "$INFERSCOPE" --help 2>&1 | grep -q -- "--gpu"; then
+# --help exits 2 on this binary, and under `set -o pipefail` that status
+# propagates through the pipe even when grep matches — so the gate fired on a
+# binary that did have the flag. Capture the text first, test it after.
+INFERSCOPE_HELP="$("$INFERSCOPE" --help 2>&1 || true)"
+if ! printf %s "$INFERSCOPE_HELP" | grep -q -- "--gpu"; then
     echo "FATAL: $INFERSCOPE has no --gpu flag."
     echo "It was built without --features gpu-nvidia and cannot measure energy."
     echo "Rebuild on this host: cargo build --release --features gpu-nvidia"
