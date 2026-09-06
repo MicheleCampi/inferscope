@@ -1,8 +1,18 @@
 # Fixture: SYNTHETIC. Not captured from a running server.
 # Constructed from the SGLang tokenizer metrics collector read at source:
-#   python/sglang/srt/observability/metrics_collector.py @ 8a311d1c (2026-07-27)
-#   TokenizerMetricsCollector (class at line 1427), label dict built in
-#   python/sglang/srt/managers/tokenizer_manager.py:614
+#   python/sglang/srt/observability/metrics_collector.py @ 54cadad (2026-09-04)
+#   TokenizerMetricsCollector, label dict built in
+#   python/sglang/srt/managers/tokenizer_manager.py
+#
+# Re-transcribed 2026-09-05. The first transcription omitted is_streaming,
+# which the collector adds to the two token counters and to those alone:
+#   prompt_tokens_total / generation_tokens_total:
+#       labelnames=list(labels.keys()) + ["is_streaming"]   (lines 1519-1528)
+#   cached_tokens_total:
+#       labelnames=list(labels.keys()) + ["cache_source"]   (line 1599)
+# A server that answers both streaming and non-streaming requests therefore
+# emits each token counter as two lines. Reading one of them is reading part
+# of the total.
 # Series names cross-checked against the SGLang repo's own consumers:
 #   test/registered/observability/test_metrics.py:178-180 (asserted present)
 #   python/sglang/benchmark/one_batch_server.py:65,71 (parsed by prefix)
@@ -17,21 +27,29 @@
 #   - _created lines, which prometheus_client emits beside every counter
 #     and which an exact name match must not pick up.
 #   - a second model, and label orders where model_name is not first.
+#   - the two token counters split across is_streaming. The totals are
+#     unchanged from the first transcription (3400 = 2900+500 prompt,
+#     512 = 480+32 generation): what changed is that reading a single line
+#     no longer reads the total.
 #
 # HELP sglang:cache_hit_rate The prefix cache hit rate.
 # TYPE sglang:cache_hit_rate gauge
 sglang:cache_hit_rate{model_name="Qwen/Qwen2.5-7B-Instruct",engine_type="unified"} 0.6823
 # HELP sglang:prompt_tokens_total Number of prefill tokens processed.
 # TYPE sglang:prompt_tokens_total counter
-sglang:prompt_tokens_total{model_name="Qwen/Qwen2.5-7B-Instruct",engine_type="unified"} 3400
-sglang:prompt_tokens_total{model_name="meta-llama/Llama-3.1-8B",engine_type="unified"} 77
+sglang:prompt_tokens_total{model_name="Qwen/Qwen2.5-7B-Instruct",engine_type="unified",is_streaming="true"} 2900
+sglang:prompt_tokens_total{model_name="Qwen/Qwen2.5-7B-Instruct",engine_type="unified",is_streaming="false"} 500
+sglang:prompt_tokens_total{model_name="meta-llama/Llama-3.1-8B",engine_type="unified",is_streaming="true"} 60
+sglang:prompt_tokens_total{is_streaming="false",model_name="meta-llama/Llama-3.1-8B",engine_type="unified"} 17
 # HELP sglang:prompt_tokens_created
 # TYPE sglang:prompt_tokens_created gauge
 sglang:prompt_tokens_created{model_name="Qwen/Qwen2.5-7B-Instruct",engine_type="unified"} 1.7857e+09
 # HELP sglang:generation_tokens_total Number of generation tokens processed.
 # TYPE sglang:generation_tokens_total counter
-sglang:generation_tokens_total{engine_type="unified",model_name="Qwen/Qwen2.5-7B-Instruct"} 512
-sglang:generation_tokens_total{model_name="meta-llama/Llama-3.1-8B",engine_type="unified"} 19
+sglang:generation_tokens_total{engine_type="unified",model_name="Qwen/Qwen2.5-7B-Instruct",is_streaming="true"} 480
+sglang:generation_tokens_total{engine_type="unified",model_name="Qwen/Qwen2.5-7B-Instruct",is_streaming="false"} 32
+sglang:generation_tokens_total{model_name="meta-llama/Llama-3.1-8B",engine_type="unified",is_streaming="true"} 12
+sglang:generation_tokens_total{model_name="meta-llama/Llama-3.1-8B",engine_type="unified",is_streaming="false"} 7
 # HELP sglang:generation_tokens_created
 # TYPE sglang:generation_tokens_created gauge
 sglang:generation_tokens_created{model_name="Qwen/Qwen2.5-7B-Instruct",engine_type="unified"} 1.7857e+09

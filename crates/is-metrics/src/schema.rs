@@ -46,6 +46,32 @@ pub(crate) enum Aggregation {
         /// therefore excluded from the sum.
         excluded: &'static str,
     },
+
+    /// The family is split across `label` and the total is the sum of every
+    /// line, with no value excluded.
+    ///
+    /// This exists for SGLang's token counters, which the collector declares
+    /// as `labelnames=list(labels.keys()) + ["is_streaming"]` — so a server
+    /// answering both streaming and non-streaming requests emits each counter
+    /// twice, once per value, and neither line is the total.
+    ///
+    /// It is a separate variant rather than a `SumOverLabel` with an
+    /// unmatched `excluded`, because the two describe different families.
+    /// `SumOverLabel` splits a whole across sources and repeats it under a
+    /// reserved value; this splits a whole across a dimension where every
+    /// value is a real part of it. Spelling the second as the first would
+    /// mean writing a reserved value that does not exist and relying on it
+    /// never matching.
+    ///
+    /// `label` is not used to select lines — the sum is over every line the
+    /// name and `model_name` already selected. It is declared so the schema
+    /// records *why* the family divides, which is the difference between a
+    /// reader who can check the assumption against the producer and one who
+    /// cannot.
+    SumOverAll {
+        /// The label the family is split across, for the record.
+        label: &'static str,
+    },
 }
 
 /// One metric family: the series name and how its lines combine.
@@ -159,9 +185,24 @@ pub(crate) const SGLANG_SCHEMA: EngineSchema = EngineSchema {
             excluded: "total",
         },
     },
-    hit_denominator: Series::single("sglang:prompt_tokens_total"),
-    prompt_tokens: Series::single("sglang:prompt_tokens_total"),
-    generation_tokens: Series::single("sglang:generation_tokens_total"),
+    hit_denominator: Series {
+        name: "sglang:prompt_tokens_total",
+        aggregation: Aggregation::SumOverAll {
+            label: "is_streaming",
+        },
+    },
+    prompt_tokens: Series {
+        name: "sglang:prompt_tokens_total",
+        aggregation: Aggregation::SumOverAll {
+            label: "is_streaming",
+        },
+    },
+    generation_tokens: Series {
+        name: "sglang:generation_tokens_total",
+        aggregation: Aggregation::SumOverAll {
+            label: "is_streaming",
+        },
+    },
     prefill_time_sum: None,
     decode_time_sum: None,
     // SGLang exposes speculative decoding as gauges, not counters.

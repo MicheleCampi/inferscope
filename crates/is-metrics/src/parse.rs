@@ -77,7 +77,13 @@ fn parse_counter_value(value: &str, metric: &str) -> Result<u64, MetricsError> {
 /// `model_name` label equals `model_name`, then reduces them per
 /// `series.aggregation`: [`Aggregation::Single`] takes the first match,
 /// [`Aggregation::SumOverLabel`] adds every match whose split label is not
-/// the reserved excluded value.
+/// the reserved excluded value, and [`Aggregation::SumOverAll`] adds every
+/// match.
+///
+/// The distinction between `Single` and the two summing forms is not a
+/// performance choice. `Single` returns on the first matching line, so on a
+/// family that emits more than one it reads a part and reports it as the
+/// whole, silently and in a direction that depends on exposition order.
 ///
 /// `Ok(None)` means the series is not in the body — a fact, not a failure.
 /// A hit-rate numerator can legitimately be absent (SGLang emits no
@@ -142,7 +148,7 @@ fn parse_series(
 
         match series.aggregation {
             Aggregation::Single => return Ok(Some(parsed)),
-            Aggregation::SumOverLabel { .. } => {
+            Aggregation::SumOverLabel { .. } | Aggregation::SumOverAll { .. } => {
                 let running = summed.unwrap_or(0);
                 summed = Some(
                     running
@@ -586,6 +592,60 @@ mod tests {
         let (hits, queries) = parse_kvcache(SGLANG_TOTAL_ONLY, SGLANG_MODEL, SGLANG).unwrap();
         assert_eq!(hits, None);
         assert_eq!(queries, 3400);
+    }
+
+    #[test]
+    fn sglang_token_counters_sum_across_is_streaming() {
+        // The defect this pins: SGLang declares the two token counters with
+        // `labelnames=list(labels.keys()) + ["is_streaming"]`
+        // (observability/metrics_collector.py:1519-1528), so a server that
+        // answers both streaming and non-streaming requests emits each as two
+        // lines. Under Aggregation::Single the parser returned on the first
+        // match and reported a part as the whole — the hit-rate denominator
+        // short by the other line, and the rate correspondingly inflated.
+        //
+        // The fixture carries 2900 streaming and 500 non-streaming prompt
+        // tokens: reading either alone is wrong, and which one you get
+        // depends on exposition order.
+        let prompt = parse_series(
+            SGLANG_PER_SOURCE,
+            &SGLANG_SCHEMA.prompt_tokens,
+            SGLANG_MODEL,
+        )
+        .unwrap();
+        assert_eq!(prompt, Some(3400), "2900 streaming + 500 non-streaming");
+
+        let generation = parse_series(
+            SGLANG_PER_SOURCE,
+            &SGLANG_SCHEMA.generation_tokens,
+            SGLANG_MODEL,
+        )
+        .unwrap();
+        assert_eq!(generation, Some(512), "480 streaming + 32 non-streaming");
+
+        // And the sum stays inside one model: the second model carries
+        // 60 + 17 prompt tokens and must not leak into the first.
+        let other = parse_series(
+            SGLANG_PER_SOURCE,
+            &SGLANG_SCHEMA.prompt_tokens,
+            "meta-llama/Llama-3.1-8B",
+        )
+        .unwrap();
+        assert_eq!(other, Some(77));
+    }
+
+    #[test]
+    fn vllm_token_counters_carry_no_splitting_label() {
+        // The reason vLLM keeps Single: its counters are declared with a bare
+        // `labelnames=labelnames` (v1/metrics/loggers.py:585,596,671,705),
+        // with nothing appended. Checked at source rather than assumed,
+        // because the same defect on vLLM would be the one that matters.
+        assert_eq!(VLLM_SCHEMA.prompt_tokens.aggregation, Aggregation::Single);
+        assert_eq!(
+            VLLM_SCHEMA.generation_tokens.aggregation,
+            Aggregation::Single
+        );
+        assert_eq!(VLLM_SCHEMA.hit_denominator.aggregation, Aggregation::Single);
     }
 
     #[test]

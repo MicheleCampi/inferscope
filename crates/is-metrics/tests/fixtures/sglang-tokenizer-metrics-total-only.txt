@@ -14,7 +14,8 @@
 #
 # HELP sglang:prompt_tokens_total Number of prefill tokens processed.
 # TYPE sglang:prompt_tokens_total counter
-sglang:prompt_tokens_total{model_name="Qwen/Qwen2.5-7B-Instruct",engine_type="unified"} 3400
+sglang:prompt_tokens_total{model_name="Qwen/Qwen2.5-7B-Instruct",engine_type="unified",is_streaming="true"} 2890
+sglang:prompt_tokens_total{model_name="Qwen/Qwen2.5-7B-Instruct",engine_type="unified",is_streaming="false"} 510
 # HELP sglang:generation_tokens_total Number of generation tokens processed.
 # TYPE sglang:generation_tokens_total counter
 sglang:generation_tokens_total{model_name="Qwen/Qwen2.5-7B-Instruct",engine_type="unified"} 512

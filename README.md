@@ -62,6 +62,16 @@ features are gated behind the `gpu-nvidia` feature flag.
   fixtures transcribed from SGLang's own collector source and
   cross-checked against its tests; a live scrape against a running
   SGLang server needs a GPU and has not been done.
+  The transcription was itself wrong once: it omitted `is_streaming`,
+  which SGLang appends to the two token counters and to those alone,
+  so a server answering both streaming and non-streaming requests
+  emits each counter as two lines. Reading the first — which is what
+  a single-line aggregation does — reported a part as the whole and
+  inflated the hit rate. Found by re-reading the collector on
+  2026-09-05, fixed with an aggregation that sums the family, and
+  pinned by a test that fails if the old form comes back. vLLM was
+  checked for the same defect at source and does not have it: its
+  counters carry no label the schema does not already select on.
 - **Speculative decoding** (ADR-016): the three vLLM speculative
   counters on the same clock as the energy sampler, so what rejected
   drafts cost can be read in joules rather than inferred from an
