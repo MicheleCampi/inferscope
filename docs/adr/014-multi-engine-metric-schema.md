@@ -279,6 +279,17 @@ readable without rewriting.
 
 ## Validation boundary (VM vs GPU)
 
+**Closed on 2026-09-10.** The GPU side of this boundary was measured on an
+A10 against SGLang 0.5.19: derived hit rate 0.9859 (420/426 over the
+window), accounting `exact_tokens`, with the server reporting
+`'page_size': 1` in its own startup args. The `is_streaming` split this
+ADR's fixture originally omitted was observed live — both token counters
+came back in two lines, totalling 787 prompt and 1240 generation tokens
+where a single-line read would have returned 574 and 216. Full evidence
+and the two environment findings in
+`validation-results/adr-014-a10-sglang/`. Original text below, unedited.
+
+
 On the VM, at zero cost: parser and schema selection against recorded
 exposition-format fixtures for both vocabularies; the SGLang fixture is
 transcribed from the source definitions listed above, including a multi-valued

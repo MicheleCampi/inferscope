@@ -60,8 +60,16 @@ features are gated behind the `gpu-nvidia` feature flag.
   The engine is declared with `--engine`, never inferred from the
   scrape body. Parser and schema selection are validated against
   fixtures transcribed from SGLang's own collector source and
-  cross-checked against its tests; a live scrape against a running
-  SGLang server needs a GPU and has not been done.
+  cross-checked against its tests, and — since 2026-09-10 — against a
+  live SGLang 0.5.19 server on an A10: hit rate 0.9859 over a window of
+  420 hits in 426 queries, accounting `exact_tokens` at the page size the
+  server reported for itself. Two things that run caught and nothing else
+  would have: SGLang serves `/metrics` only when started with
+  `--enable-metrics`, returning a plain 404 otherwise; and a
+  single-request probe cannot derive a rate from an engine that publishes
+  its counters on request completion, because the window closes with the
+  request that would have moved them. Evidence in
+  [`validation-results/adr-014-a10-sglang/`](validation-results/adr-014-a10-sglang/).
   The transcription was itself wrong once: it omitted `is_streaming`,
   which SGLang appends to the two token counters and to those alone,
   so a server answering both streaming and non-streaming requests

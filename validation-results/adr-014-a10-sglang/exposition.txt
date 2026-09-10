@@ -1,0 +1,7 @@
+sglang:prompt_tokens_total{engine_type="unified",is_streaming="false",model_name="Qwen/Qwen2.5-0.5B-Instruct"} 574.0
+sglang:prompt_tokens_total{engine_type="unified",is_streaming="true",model_name="Qwen/Qwen2.5-0.5B-Instruct"} 213.0
+sglang:generation_tokens_total{engine_type="unified",is_streaming="false",model_name="Qwen/Qwen2.5-0.5B-Instruct"} 216.0
+sglang:generation_tokens_total{engine_type="unified",is_streaming="true",model_name="Qwen/Qwen2.5-0.5B-Instruct"} 1024.0
+sglang:cached_tokens_total{cache_source="device",engine_type="unified",model_name="Qwen/Qwen2.5-0.5B-Instruct"} 700.0
+sglang:num_queue_reqs{engine_type="unified",model_name="Qwen/Qwen2.5-0.5B-Instruct",moe_ep_rank="0",pp_rank="0",tp_rank="0"} 0.0
+sglang:token_usage{engine_type="unified",model_name="Qwen/Qwen2.5-0.5B-Instruct",moe_ep_rank="0",pp_rank="0",tp_rank="0"} 0.0
