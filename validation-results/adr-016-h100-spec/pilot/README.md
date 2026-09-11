@@ -29,13 +29,21 @@ Three things this confirms that were previously read but not observed:
 The Lambda image ships a scientific Python stack built against numpy 1.x.
 vLLM installs numpy 2.x, which breaks scipy and sklearn at import time and
 kills the engine before it starts. The fix is a clean venv (`python3 -m venv`,
-no system site packages), plus `ninja`, which torch invokes from PATH to
-compile kernels at runtime.
+no system site packages), plus `ninja`, which FlashInfer invokes as an
+executable from PATH when it compiles kernels at engine start.
+
+Two corrections from the SGLang session of 2026-09-10, where the same
+failure appeared on a different engine. It is not a vLLM property: it is
+FlashInfer's, so any engine using it behaves the same way — SGLang
+included. And pip-installing `ninja` into the venv is not sufficient on
+its own: the venv's `bin` has to be on PATH when the engine starts, or
+the subprocess lookup still fails with `FileNotFoundError: 'ninja'`.
 
 For the next session, in order:
 
     python3 -m venv ~/venv
     ~/venv/bin/pip install vllm ninja
+    export PATH="$HOME/venv/bin:$PATH"     # FlashInfer looks here
     curl -sSf https://sh.rustup.rs | sh -s -- -y --profile minimal
     cargo build --release --features gpu-nvidia
 
