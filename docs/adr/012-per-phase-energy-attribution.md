@@ -1,7 +1,7 @@
 # ADR-012: Per-Phase Energy Attribution (Prefill vs Decode)
 
 - **Status**: Accepted
-- **Validation**: VM fixture + llm-d sim complete. Mechanism exercised on real hardware 2026-07-21 (1x A10, vLLM) as a by-product of the ADR-013 run: both apportionments and their divergence populate on live counters (`validation-results/adr-013-a10-vllm/`, divergence -0.97 on a prompt-heavy agentic load, 81ms prefill vs 5.5s decode). That is one uncontrolled workload, not the calibration this ADR calls for: prefill-only / decode-heavy isolation remains pending.
+- **Validation**: VM fixture + llm-d sim complete. Mechanism exercised on real hardware 2026-07-21 (1x A10, vLLM) as a by-product of the ADR-013 run: both apportionments and their divergence populate on live counters (`validation-results/adr-013-a10-vllm/`, divergence -0.97 on a prompt-heavy agentic load, 81ms prefill vs 5.5s decode). The divergence also populates on 1x H100 PCIe in the eleven ADR-016 stage-one runs (`validation-results/adr-016-h100-spec/`, 2026-09-05), and in the CUDA-graphs energy re-run on 1x H100 PCIe (`cuda-graphs-experiment`, `results-energy-tight/`, committed 2026-06-28: twelve sustained runs). None of these is the calibration this ADR calls for: prefill-only / decode-heavy isolation remains pending.
 - **Date**: 2026-06-27
 - **Deciders**: Michele Campi
 

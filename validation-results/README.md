@@ -66,6 +66,42 @@ Bounds on this evidence, and they matter:
   resolve no counter delta at all; `samples_in_window` is carried per step
   so a reader can tell which case applies.
 
+## adr-014-a10-sglang/
+
+Live SGLang scrape (ADR-014) on an NVIDIA A10 23GB, driver 580.105.08,
+SGLang 0.5.19, Qwen2.5-0.5B-Instruct, 2026-09-10, inferscope at `92f9405`.
+
+Confirms:
+- the `is_streaming` split on a real endpoint: both token counters come back
+  on two lines (787 and 1240 in total), where the single-line aggregation this
+  schema used until 2026-09-05 would have read 574 or 213, and 216 or 1024
+- the numerator is per-source: `cached_tokens_total` arrives under
+  `cache_source="device"`, not the reserved `total`
+- `exact_tokens` accounting against the `page_size: 1` the server reports in
+  its own startup args
+- a limit, recorded in the runbook: a single-request probe cannot derive a hit
+  rate from an engine that publishes its counters on request completion
+
+See the directory README for the full run notes.
+
+## adr-016-h100-spec/
+
+Speculative-decoding energy campaign (ADR-016) on 1x NVIDIA H100 PCIe (80GB),
+driver 580.105.08, vLLM 0.28.0; target Qwen2.5-3B-Instruct, draft
+Qwen2.5-0.5B-Instruct, k=5. Protocol declared 2026-09-03 (`PROTOCOL.md`);
+stage one run 2026-09-05 (`RESULTS.md`); `pilot/` is a single point and not
+campaign data. Figures are H100 PCIe figures; SXM is not covered.
+
+Confirms:
+- session validity against criteria fixed before the run: baseline drift 0.13%
+  against a 5% tolerance, realized acceptance length matching the configured
+  value on all nine points
+- the derived per-phase apportionments and their divergence populate on live
+  H100 PCIe counters across the eleven stage-one runs
+- attributability checked at source before concluding: constant generated-token
+  denominator (1.32% spread), unchanged scheduler budget, identical completed
+  load across arms, internally consistent counters
+
 ## multigpu-a40-2026-05-23/
 
 Multi-device NVML sampling validated on 4× NVIDIA A40 (RunPod, driver
