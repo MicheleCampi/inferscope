@@ -1,6 +1,7 @@
 # ADR-016: Speculative Decoding Energy Attribution
 
 - **Status**: Accepted
+- **Amended in part**: see Postscript, 2026-09-19 - the `--sample-only` KV scrape is wired in
 - **Validation**: Stage one complete, 2026-09-05, 1x H100 PCIe. Eleven runs,
   session valid (baseline drift 0.13% against a 5% tolerance; realized
   acceptance length matched the configured value on all nine points). The
@@ -292,3 +293,42 @@ differ in the draft model as well as in acceptance, and the energy difference
 cannot be attributed to either. The synthetic path holds everything else fixed.
 Validating a synthetic point against a real draft model at the same measured
 acceptance length is the natural follow-on, and is out of scope here.
+
+## Postscript 2026-09-19: the `--sample-only` KV scrape is wired in
+
+The negative consequence recorded above - that the campaign path carried
+two of the three scrapes and not the third - no longer holds. `--sample-only`
+now spawns the KV scrape alongside the phase and speculative ones, under the
+same three-way guard on endpoint, model and engine, and the report carries
+`kvcache_timeline` and the derived `kvcache` on that path as it already did
+on the probe path. The per-trajectory attribution of ADR-013, which this
+path computes from the raw timelines, receives the KV timeline instead of
+the `None` it was passed by construction.
+
+The gap was historical rather than technical: every piece already existed -
+the scrape function, the parser, the derivation, the timeline type, the
+parameter on the derivation - and only the wiring in one function was
+missing. The cost was one config, one cancellation channel, two tuple
+elements and one derivation line, plus two optional fields on
+`ResourceReport`.
+
+### What this postscript does not claim
+
+- **No KV-cache hit rate has been measured against a real vLLM endpoint.**
+  The scrape is exercised by an integration test that drives the binary
+  against a static exposition body in the shape of vLLM's, not against a
+  served model. The README statement to this effect stands unchanged.
+- **The ADR-013 limitation is not closed.** That ADR records that per-step
+  KV deltas remain unvalidated on real hardware because no KV timeline was
+  scraped in the 2026-07-21 run. This change makes such a run possible on
+  the attach path; no such run has been made.
+- **The KV slice of the trajectory is not covered by an automated test.**
+  The derivation returns early without a GPU timeline, and the GPU feature
+  is off by default, so the wiring test asserts on the report sections and
+  not on the trajectory. Covering it needs a run on a machine with NVML.
+- **The report schema changes shape without changing version.** Both fields
+  are optional and skipped when absent, so readers of older reports keep
+  working; but a campaign spanning this change yields reports with and
+  without the KV section and nothing in the document distinguishes the two
+  builds. The ambiguity ADR-014 D7 guards against does not arise here: an
+  absent `kvcache_timeline` has one meaning, not two.

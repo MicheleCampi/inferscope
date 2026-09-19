@@ -502,21 +502,25 @@ async fn run_sample_only(
     // that server's PID. Wiring the scrape only into the probe path
     // would collect nothing on the exact run ADR-016 exists to enable.
     //
-    // The KV scrape is still absent here. That gap predates ADR-016 and
-    // is recorded rather than closed by it.
+    // All three scrapes run here, KV included: a report from this path
+    // carries the same sections as one from the probe path.
     let scrape_handles = match (
         args.metrics_endpoint.as_deref(),
         args.model.as_deref(),
         engine,
     ) {
         (Some(endpoint), Some(model), Some(engine)) => {
+            let kv_cfg = MetricsConfig::with_period(endpoint, model, engine, args.metrics_period());
             let phase_cfg =
                 MetricsConfig::with_period(endpoint, model, engine, args.metrics_period());
             let spec_cfg =
                 MetricsConfig::with_period(endpoint, model, engine, args.metrics_period());
+            let (kv_cancel, kv_rx) = oneshot::channel();
             let (phase_cancel, phase_rx) = oneshot::channel();
             let (spec_cancel, spec_rx) = oneshot::channel();
             Some((
+                tokio::spawn(scrape_during(kv_cfg, start, kv_rx)),
+                kv_cancel,
                 tokio::spawn(scrape_phase_during(phase_cfg, start, phase_rx)),
                 phase_cancel,
                 tokio::spawn(scrape_spec_during(spec_cfg, start, spec_rx)),
@@ -552,13 +556,23 @@ async fn run_sample_only(
     };
     #[cfg(not(feature = "gpu-nvidia"))]
     let gpu_timeline: Option<is_core::GpuTimeline> = None;
-    let (phase_timeline, spec_timeline) =
-        if let Some((phase_task, phase_cancel, spec_task, spec_cancel)) = scrape_handles {
-            // Both cancels before either await, so neither loop keeps
-            // scraping past the end of the sampling window while the
-            // other is being joined.
+    let (kvcache_timeline, phase_timeline, spec_timeline) =
+        if let Some((kv_task, kv_cancel, phase_task, phase_cancel, spec_task, spec_cancel)) =
+            scrape_handles
+        {
+            // Every cancel before any await, so no loop keeps scraping
+            // past the end of the sampling window while another one is
+            // being joined.
+            let _ = kv_cancel.send(());
             let _ = phase_cancel.send(());
             let _ = spec_cancel.send(());
+            let kv = match kv_task.await {
+                Ok(tl) => Some(tl),
+                Err(e) => {
+                    eprintln!("inferscope: warning: kv scrape task ended abnormally: {e}");
+                    None
+                }
+            };
             let phase = match phase_task.await {
                 Ok(tl) => Some(tl),
                 Err(e) => {
@@ -573,9 +587,9 @@ async fn run_sample_only(
                     None
                 }
             };
-            (phase, spec)
+            (kv, phase, spec)
         } else {
-            (None, None)
+            (None, None, None)
         };
 
     let resource = match resource_timeline.as_ref() {
@@ -583,6 +597,7 @@ async fn run_sample_only(
         None => None,
     };
     let gpu = gpu_timeline.as_ref().and_then(derive_gpu);
+    let kvcache = kvcache_timeline.as_ref().and_then(derive_kvcache);
 
     // Apportion the sampled device energy across prefill and decode
     // (ADR-012), using the same aggregate figure as efficiency.
@@ -593,16 +608,15 @@ async fn run_sample_only(
         derive_phase_energy(tl, mj, source)
     });
     // Trajectory-level attribution (ADR-013) in attach mode: the
-    // sample-only path holds the raw timelines directly. No KV-cache
-    // scrape exists in this path, so that slice is absent by
-    // construction.
+    // sample-only path holds the raw timelines directly, KV-cache
+    // included now that the scrape is wired in here.
     let trajectory = match args.steps_file.as_deref() {
         Some(path) => {
             let steps = read_steps(path)?;
             is_report::derive_trajectory_from_timelines(
                 reference_instant_unix_ns,
                 gpu_timeline.as_ref(),
-                None,
+                kvcache_timeline.as_ref(),
                 phase_timeline.as_ref(),
                 &steps,
             )
@@ -617,6 +631,8 @@ async fn run_sample_only(
         duration_secs,
         resource,
         gpu,
+        kvcache_timeline,
+        kvcache,
         phase_timeline,
         phase_energy,
         spec_timeline,
@@ -870,6 +886,8 @@ mod tests {
             duration_secs: 3600,
             resource: None,
             gpu: None,
+            kvcache_timeline: None,
+            kvcache: None,
             phase_timeline: None,
             spec_timeline: None,
             phase_energy: None,

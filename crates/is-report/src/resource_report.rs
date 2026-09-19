@@ -18,7 +18,7 @@
 
 use serde::{Deserialize, Serialize};
 
-use crate::metrics::{GpuMetrics, PhaseEnergyMetrics, ResourceMetrics};
+use crate::metrics::{GpuMetrics, KvCacheMetrics, PhaseEnergyMetrics, ResourceMetrics};
 
 /// A standalone resource-sampling report (no timing, no probe).
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -43,6 +43,17 @@ pub struct ResourceReport {
     /// Derived per-device GPU metrics. `None` when GPU sampling was not
     /// requested, the feature is absent, or NVML was unavailable.
     pub gpu: Option<GpuMetrics>,
+    /// The raw KV-cache timeline scraped from the engine's Prometheus
+    /// endpoint during the sampling window, if `--metrics-endpoint` was
+    /// supplied (ADR-011). `None` when no endpoint was configured or no
+    /// scrape succeeded.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub kvcache_timeline: Option<is_core::KvCacheTimeline>,
+    /// Derived KV-cache metrics over the window, if a valid window was
+    /// scraped (ADR-011). `None` when no timeline was available or the
+    /// window was invalid (counter regression, or zero queries).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub kvcache: Option<KvCacheMetrics>,
     /// The raw per-phase timeline scraped from the engine's Prometheus
     /// endpoint during the sampling window, if `--metrics-endpoint` was
     /// supplied (ADR-012). `None` when no endpoint was configured or no
@@ -101,6 +112,8 @@ mod tests {
             duration_secs: 30,
             resource: None,
             gpu: None,
+            kvcache_timeline: None,
+            kvcache: None,
             phase_timeline: None,
             spec_timeline: None,
             phase_energy: Some(PhaseEnergyMetrics {
@@ -132,6 +145,8 @@ mod tests {
             duration_secs: 1,
             resource: None,
             gpu: None,
+            kvcache_timeline: None,
+            kvcache: None,
             phase_timeline: None,
             spec_timeline: None,
             phase_energy: None,
@@ -175,6 +190,8 @@ mod tests {
             duration_secs: 1,
             resource: None,
             gpu: None,
+            kvcache_timeline: None,
+            kvcache: None,
             phase_timeline: None,
             phase_energy: None,
             spec_timeline: Some(timeline),

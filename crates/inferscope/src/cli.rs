@@ -62,9 +62,10 @@ pub struct Args {
     pub sample_period_ms: u64,
     /// Prometheus `/metrics` endpoint to scrape for KV-cache hit rate
     /// (ADR-011), e.g. `http://127.0.0.1:18000/metrics`. When set, a
-    /// scrape task runs in parallel with the probe and the report
-    /// carries the window hit rate. When unset, no scrape happens and
-    /// the KV-cache section is absent. The `--model` value selects the
+    /// scrape task runs alongside the run - the probe run or the
+    /// `--sample-only` window alike - and the report carries the
+    /// window hit rate. When unset, no scrape happens and the
+    /// KV-cache section is absent. The `--model` value selects the
     /// `model_name` label series.
     #[arg(long, requires = "engine")]
     pub metrics_endpoint: Option<String>,

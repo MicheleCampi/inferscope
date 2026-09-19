@@ -56,6 +56,18 @@ run that produced it.
   test keeps the flag list level with `Args`, since a flag added later and
   not listed would reopen exactly that silence.
 
+### Changed
+
+- `--sample-only` now scrapes the KV cache alongside the phase and
+  speculative series, under the same guard on endpoint, model and engine.
+  A report from that path carries `kvcache_timeline` and the derived
+  `kvcache` as one from the probe path already did, and the per-trajectory
+  attribution receives the KV timeline instead of the `None` it was passed
+  by construction. The gap was recorded in ADR-016 and a postscript there
+  records the wiring; nothing about it was measured against a real vLLM
+  endpoint, and the README statement to that effect stands. Both fields are
+  optional on read, so reports written before this change still parse.
+
 ### Notes
 
 - No measured cost figure exists yet. `derive_cost` multiplies; the number

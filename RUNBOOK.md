@@ -293,7 +293,7 @@ The run completes, the report has GPU and phase data, and `spec_timeline` is eit
 ### Detection
 - `--json` output contains no `spec_timeline` key at all, or `"spec_timeline": {"sample_period_ns": N, "samples": []}`.
 - stderr carries no `spec scrape task ended abnormally` warning.
-- The other scraped sections (`phase_timeline`, and `kvcache_timeline` on the probe path) are populated normally.
+- The other scraped sections (`phase_timeline` and `kvcache_timeline`) are populated normally.
 
 ### Diagnosis (2 minutes)
 1. Distinguish absent from empty. Absent means no `--metrics-endpoint` was passed: the scrape was never spawned. Empty means it ran and every tick was dropped. These are different problems.
@@ -314,7 +314,7 @@ The cost of that choice is exactly this scenario, which is why it has a runbook 
 ### Prevention
 Before a campaign run, check the endpoint once: `curl -s <endpoint>/metrics | grep -c spec_decode_num_drafts_total` should return 1 or more. Scripted sweeps should assert this before starting the load generator, since a whole sweep can otherwise complete with every report empty and every exit code 0.
 
-For campaign runs specifically, note that `--sample-only` carries the phase and speculative scrapes but **not** the KV scrape. A run on that path will always show an absent `kvcache_timeline`; that is a known gap, not a symptom of this scenario.
+A useful cross-check on either path: if `kvcache_timeline` carries samples while `spec_timeline` is empty, the endpoint answered and the scrape ran, so the absence is in the series rather than in the wiring. Before the KV scrape was wired into `--sample-only`, a report from that path showed no `kvcache_timeline` at all, whatever the endpoint served; a report written by an older build still will.
 
 ---
 
