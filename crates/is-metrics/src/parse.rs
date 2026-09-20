@@ -33,19 +33,26 @@ use crate::schema::{Aggregation, Series};
 /// every series with `engine_type` and, depending on server flags, with
 /// ranks and operator-supplied custom labels alongside `model_name`.
 fn extract_label<'a>(labels: &'a str, key: &str) -> Option<&'a str> {
-    // Build the needle `key="` and find it. Anchoring on the equals and
-    // quote avoids matching a key that is a suffix of another (e.g.
-    // searching "name" must not match "model_name").
-    for part in labels.split(',') {
-        let part = part.trim();
-        let (k, v) = part.split_once('=')?;
-        if k.trim() == key {
-            // v is a quoted string: "value". Strip the surrounding
-            // quotes. If it is not quoted as expected, skip.
-            let v = v.trim();
-            let unquoted = v.strip_prefix('"').and_then(|s| s.strip_suffix('"'))?;
-            return Some(unquoted);
+    // Search for the needle `key="` rather than splitting the block on
+    // ',': a label value may itself contain a comma. vLLM joins LoRA
+    // adapter names that way, and an operator-supplied label can too.
+    // Splitting first cuts such a value in two, and the fragment after
+    // the cut carries no '=' — which used to abandon the search for
+    // every later label as well.
+    let needle = format!("{key}=\"");
+    let mut rest = labels;
+    while let Some(at) = rest.find(&needle) {
+        let before = &rest[..at];
+        // Reject a key that is the suffix of another (`name` inside
+        // `model_name`): the match must start the block or follow a
+        // separator.
+        let boundary = before.is_empty() || before.trim_end().ends_with(',');
+        let value_start = at + needle.len();
+        if boundary {
+            let value = &rest[value_start..];
+            return value.find('"').map(|end| &value[..end]);
         }
+        rest = &rest[value_start..];
     }
     None
 }
@@ -419,6 +426,32 @@ mod tests {
     fn extract_label_does_not_match_suffix_key() {
         let labels = r#"model_name="m""#;
         assert_eq!(extract_label(labels, "name"), None);
+    }
+
+    #[test]
+    fn extract_label_reads_past_a_value_containing_a_comma() {
+        // vLLM's `lora_requests_info` joins adapter names with commas
+        // inside one label value. Splitting the block on ',' cuts that
+        // value in two, and the fragment after the cut carries no '='.
+        let labels = r#"running_lora_adapters="a,b",waiting_lora_adapters="c""#;
+        assert_eq!(extract_label(labels, "running_lora_adapters"), Some("a,b"));
+        assert_eq!(extract_label(labels, "waiting_lora_adapters"), Some("c"));
+    }
+
+    #[test]
+    fn a_comma_in_a_foreign_label_does_not_hide_the_series() {
+        // The tokenizer collector on SGLang, and any operator-supplied
+        // label, can carry a comma. A line whose `model_name` cannot be
+        // read is skipped (`continue`), so the family reads as missing
+        // and the error names `model_name` as the reason — pointing the
+        // reader at the one label that was in fact correct.
+        let body = concat!(
+            "vllm:prefix_cache_hits_total{tags=\"a,b\",model_name=\"m\"} 144.0\n",
+            "vllm:prefix_cache_queries_total{tags=\"a,b\",model_name=\"m\"} 270.0\n",
+        );
+        let (hits, queries) = parse_kvcache(body, "m", Engine::Vllm).expect("series are present");
+        assert_eq!(hits, Some(144));
+        assert_eq!(queries, 270);
     }
 
     /// A body produced by `prometheus_client`, the library vLLM builds

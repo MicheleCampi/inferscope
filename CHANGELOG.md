@@ -68,6 +68,24 @@ run that produced it.
   endpoint, and the README statement to that effect stands. Both fields are
   optional on read, so reports written before this change still parse.
 
+### Fixed
+
+- **A comma inside a label value made a whole metric family unreadable.**
+  `extract_label` split the label block on `,` and then required every
+  fragment to carry an `=`; a value containing a comma is cut in two by
+  that split, so the search was abandoned for the key being read and for
+  every label after it. Because `parse_kvcache` and `parse_phase` skip a
+  line whose `model_name` does not match, a body where some other label
+  carried a comma reported `metric ... not found for model_name` —
+  naming the one label that was correct. The search now looks for
+  `key="` and reads to the closing quote, which is what the function's
+  comment already described; the suffix guard is kept, so `name` still
+  does not match `model_name`. Three malformed inputs — an unterminated
+  value, a bare unquoted value, and a stray quote inside a value — were
+  compared against the previous implementation and behave as before. vLLM's
+  `vllm:lora_requests_info` is what made this visible: it joins adapter
+  names into one comma-separated value.
+
 ### Notes
 
 - No measured cost figure exists yet. `derive_cost` multiplies; the number
