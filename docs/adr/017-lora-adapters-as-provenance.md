@@ -1,6 +1,8 @@
 # ADR-017: Active LoRA Adapters as Report Provenance
 
 - **Status**: Accepted
+- **Amended in part**: see Postscript, 2026-09-21 - D6 on absence and on
+  several series in one read
 - **Validation as of 2026-09-21, when this ADR was written**: none. Nothing
   here is implemented. The premise was reproduced against
   llm-d-inference-sim at `e924683`, with the script that ships in the
@@ -194,3 +196,87 @@ Rejected, D3. A report separated from its run log could not be
 interpreted, which is the condition ADR-014 D2 exists to prevent. The
 declared list is what the recorded set confirms; it is not a substitute
 for recording it.
+
+## Postscript 2026-09-21: absence, and several series in one read
+
+D6 is wrong in one sentence and silent on one case. Both were found before
+any code was written, by reading the producers that D6 describes and that
+the inventory behind this ADR had not covered.
+
+### No series does not mean LoRA is off
+
+D6 says a successful read that finds no `vllm:lora_requests_info` records
+that LoRA was not configured. The two vLLM frontends decide differently when
+a series exists, both read at `27757dde02`.
+
+The Python frontend sets the Gauge whenever `record()` receives scheduler
+stats (`vllm/v1/metrics/loggers.py:1035`), with empty adapter lists when no
+adapter is loaded (lines 1099-1111). That `labels(...)` call at line 1111
+is the only place vLLM creates a series for it, so until the first stats
+arrive there is none.
+
+The Rust frontend emits a series only while an adapter is running or
+waiting (`rust/src/engine-core-client/src/metrics.rs:385`), and removes the
+previous series whenever the set changes (lines 390-393). With no adapter
+active, the last series has been removed and no new one is set.
+
+On the Rust frontend, then, a server with LoRA configured and no adapter
+active cannot be told apart from one without LoRA. llm-d-router's
+extractor already treats a missing family as a normal state rather than an
+error, skipping the LoRA section without counting a failure
+(`loraspec.go:53-57`, at `dc6538a1`).
+
+A read that finds no series is therefore recorded as finding none, with no
+inference about configuration. A read that fails remains a separate
+outcome, as D6 states.
+
+### One read can return several series
+
+D6 treats a read as returning one set of adapters. A series is identified
+by its labels, so a producer that keeps old series exposes every
+combination it has reported. The Python frontend keeps them: across
+`vllm/`, the Gauge appears four times, declared, assigned, checked and
+set, and is never removed (`loggers.py:981`, `992`, `1099`, `1111`).
+llm-d-inference-sim keeps them on its event path
+(`pkg/engine/vllm/metrics.go:818`, at `e924683`); its
+only removal is in the fake-metrics reset, where `resetLoRA` (line 767)
+calls `resetCollector` (line 768). The Rust frontend, by removing on every
+change, exposes at most one.
+
+On the paths described here, the value written is the current time:
+Python through `set_to_current_time()` (`loggers.py:1111`), Rust through
+`set(now_unix_secs())` in the same function as the removal, the simulator
+on its event path in `reportLoras` (`metrics.go:818-822`).
+
+llm-d-router resolves several series by taking the one with the largest
+value (`getLatestMetric`, `loraspec.go:58-78`), reading the Gauge value
+directly (`extractValue`, `spec.go:151-162`). Its default specification is
+the bare metric name (`factories.go:97`), which parses to no label matcher
+(`spec.go:34`, `66-77`), so every series enters the comparison
+(`labelsMatch`, `spec.go:133-147`). The comparison is strict, so a tie goes
+to whichever series the parser returns first.
+
+On the simulator, the value is whole seconds (`metrics.go:822`), so series
+reported within the same second tie. A zero-adapter series exists from the
+moment its metrics adapter is built (`metrics.go:1128-1132`, called from
+`newMetricsAdapter` at line 269), and `reportLoras` stamps it again with
+the current time each time it reports a snapshot with no adapter running
+or waiting (`metrics.go:815-822`). That restamp, not the first one, is
+what lets it tie with series reported in the same second. In the runs
+observed with the reproduction script in lora-multitenancy-experiment, it
+came first in the exposition. Where it comes first and ties, the router's
+rule returns an empty adapter set while adapters are serving. This was not
+run against the router; it follows from the lines cited.
+
+inferscope's reader takes the series with the largest value and, on a tie,
+records the ambiguity rather than choosing one.
+
+### What this postscript does not claim
+
+It does not claim that ties occur on vLLM. The Python frontend's timestamp
+resolution is set by `prometheus_client`, outside vLLM, and was not read;
+the Rust frontend exposes at most one series.
+
+It does not claim that the exposition order seen on the simulator is
+guaranteed. It was observed, and is not established by any line read
+here.
