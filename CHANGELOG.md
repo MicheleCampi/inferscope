@@ -86,6 +86,19 @@ run that produced it.
   `vllm:lora_requests_info` is what made this visible: it joins adapter
   names into one comma-separated value.
 
+### Documentation
+
+- **ADR-017: active LoRA adapters as report provenance.** Decided, not
+  implemented. The set of adapters a server is running is recorded on the
+  report as provenance of the window, in the sense ADR-014 D2 gives the
+  word, rather than as a timeline or a schema role: a set of names has no
+  delta, and a sample holding names would record the per-adapter loss
+  that vLLM and llm-d-inference-sim commit when they reduce a count to
+  names, and that llm-d-router inherits by receiving only the names. Typed
+  so that absence can be read, after `HitRateProvenance`, and raising
+  `REPORT_SCHEMA_VERSION`, because this field's absence resolves against
+  the version. `metrics::Report` is out of scope and unchanged.
+
 ### Notes
 
 - No measured cost figure exists yet. `derive_cost` multiplies; the number
