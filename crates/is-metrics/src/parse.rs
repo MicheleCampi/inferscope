@@ -57,6 +57,29 @@ fn extract_label<'a>(labels: &'a str, key: &str) -> Option<&'a str> {
     None
 }
 
+/// Splits one exposition line into its metric name, label block and value.
+///
+/// The caller prepares the line first: trimmed, and neither empty nor a
+/// `#` comment. The value is the text after the last whitespace. The label
+/// block is what lies between `{` and a closing `}`; a series with no
+/// labels yields an empty block. Not the shape our counters take, but
+/// handled rather than panicked. `None` when there is no whitespace to split
+/// on.
+///
+/// Shared by [`parse_series`] and [`parse_seconds_as_nanos`], which held
+/// identical copies of this logic, so that a correction to how a line is
+/// split lands once.
+fn split_line(line: &str) -> Option<(&str, &str, &str)> {
+    let (raw, value) = line.rsplit_once(char::is_whitespace)?;
+    let raw = raw.trim();
+    let value = value.trim();
+    let (name, labels) = match raw.split_once('{') {
+        Some((name, rest)) => (name, rest.strip_suffix('}').unwrap_or(rest)),
+        None => (raw, ""),
+    };
+    Some((name, labels, value))
+}
+
 /// Reads one line's value as a counter.
 ///
 /// The value is read as `f64` then converted to `u64`: the Prometheus
@@ -116,22 +139,8 @@ fn parse_series(
             continue;
         }
 
-        // Split into "name{labels}" and "value" on the last whitespace.
-        let Some((raw, value)) = line.rsplit_once(char::is_whitespace) else {
+        let Some((name, labels, value)) = split_line(line) else {
             continue;
-        };
-        let raw = raw.trim();
-        let value = value.trim();
-
-        // Separate the metric name from the label block.
-        let (name, labels) = match raw.split_once('{') {
-            Some((name, rest)) => {
-                let labels = rest.strip_suffix('}').unwrap_or(rest);
-                (name, labels)
-            }
-            // A series with no labels: name is the whole thing. Not the
-            // shape our counters take, but handled rather than panicked.
-            None => (raw, ""),
         };
 
         if name != series.name {
@@ -204,18 +213,8 @@ fn parse_seconds_as_nanos(body: &str, metric: &str, model_name: &str) -> Result<
             continue;
         }
 
-        let Some((series, value)) = line.rsplit_once(char::is_whitespace) else {
+        let Some((name, labels, value)) = split_line(line) else {
             continue;
-        };
-        let series = series.trim();
-        let value = value.trim();
-
-        let (name, labels) = match series.split_once('{') {
-            Some((name, rest)) => {
-                let labels = rest.strip_suffix('}').unwrap_or(rest);
-                (name, labels)
-            }
-            None => (series, ""),
         };
 
         if name != metric {
