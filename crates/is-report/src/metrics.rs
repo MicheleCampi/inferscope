@@ -218,9 +218,14 @@ pub struct EfficiencyMetrics {
 /// provenance from it rather than defaulting a measurement; see
 /// [`HitRateProvenance::resolve`].
 ///
+/// Version 2 adds `lora` to [`crate::ResourceReport`] (ADR-017). Its
+/// absence is read against this number: below 2 the report predates the
+/// field, at 2 or above the build could have recorded it and did not; see
+/// [`crate::LoraProvenance::resolve`].
+///
 /// This is not the crate version and does not follow it. It changes
 /// only when the shape or meaning of a serialized field changes.
-pub const REPORT_SCHEMA_VERSION: u32 = 1;
+pub const REPORT_SCHEMA_VERSION: u32 = 2;
 
 /// What is known about how a rendered hit rate was accounted
 /// (ADR-014 D2, D7).

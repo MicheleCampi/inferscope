@@ -19,6 +19,7 @@
 use crate::config::Engine;
 use crate::error::MetricsError;
 use crate::schema::{Aggregation, Series};
+use is_core::{LoraObservation, LoraSeries};
 
 /// Extracts the value of one label from a Prometheus label block.
 ///
@@ -379,6 +380,118 @@ pub fn parse_phase(
     let decode_ns = parse_phase_time(body, schema.decode_time_sum, model_name)?;
 
     Ok((prompt_tokens, generation_tokens, prefill_ns, decode_ns))
+}
+
+/// The name of the family ADR-017 reads. ADR-017 D2 keeps it out of the
+/// schema, so it is named here rather than in `schema.rs`.
+const LORA_REQUESTS_INFO: &str = "vllm:lora_requests_info";
+
+/// What a parse of `vllm:lora_requests_info` found in one body (ADR-017).
+///
+/// Three of the four outcomes [`LoraObservation`] records. A parse already
+/// holds the body, so it cannot fail to read it: reporting a read that did
+/// not complete belongs to the scrape, and this type has no way to express
+/// it.
+#[derive(Debug, Clone, PartialEq)]
+pub enum LoraReading {
+    /// No series of the family in the body.
+    NoSeries,
+    /// One series carried a value strictly larger than every other.
+    Latest(LoraSeries),
+    /// Several series shared the largest value, in body order.
+    Tie(Vec<LoraSeries>),
+}
+
+impl From<LoraReading> for LoraObservation {
+    fn from(reading: LoraReading) -> Self {
+        match reading {
+            LoraReading::NoSeries => LoraObservation::NoSeries,
+            LoraReading::Latest(series) => LoraObservation::Latest { series },
+            LoraReading::Tie(candidates) => LoraObservation::Tie { candidates },
+        }
+    }
+}
+
+/// Parses every series of `vllm:lora_requests_info` in a text-exposition
+/// body and reports the most recent (ADR-017 and its postscript).
+///
+/// Not read through [`parse_series`], which keeps only lines whose
+/// `model_name` matches: this family carries no such label. The value is
+/// read as `f64`, not through [`parse_counter_value`], which truncates
+/// toward zero and would make two series set within one second tie where
+/// the producer told them apart.
+///
+/// The series with the largest value is the most recent. When several share
+/// it, none is chosen.
+///
+/// `Err` is reserved for a series that exists but does not parse: a missing
+/// adapter label, a `max_lora` that is not a number, or a value that is not
+/// a finite number.
+pub fn parse_lora(body: &str) -> Result<LoraReading, MetricsError> {
+    let mut all = Vec::new();
+    for line in body.lines() {
+        let line = line.trim();
+        if line.is_empty() || line.starts_with('#') {
+            continue;
+        }
+        let Some((name, labels, value)) = split_line(line) else {
+            continue;
+        };
+        if name != LORA_REQUESTS_INFO {
+            continue;
+        }
+        all.push(parse_lora_series(labels, value)?);
+    }
+
+    let Some(max) = all.iter().map(|s| s.value).reduce(f64::max) else {
+        return Ok(LoraReading::NoSeries);
+    };
+    let mut top: Vec<LoraSeries> = all.into_iter().filter(|s| s.value == max).collect();
+    if top.len() == 1 {
+        Ok(LoraReading::Latest(top.remove(0)))
+    } else {
+        Ok(LoraReading::Tie(top))
+    }
+}
+
+/// Reads one series of `vllm:lora_requests_info` from its label block and
+/// value text.
+fn parse_lora_series(labels: &str, value: &str) -> Result<LoraSeries, MetricsError> {
+    let names = |key: &str| -> Result<Vec<String>, MetricsError> {
+        let raw = extract_label(labels, key).ok_or_else(|| MetricsError::Parse {
+            detail: format!("metric {LORA_REQUESTS_INFO}: no {key} label"),
+        })?;
+        Ok(if raw.is_empty() {
+            Vec::new()
+        } else {
+            raw.split(',').map(str::to_string).collect()
+        })
+    };
+    let running_lora_adapters = names("running_lora_adapters")?;
+    let waiting_lora_adapters = names("waiting_lora_adapters")?;
+
+    let max_lora = match extract_label(labels, "max_lora") {
+        None => None,
+        Some(raw) => Some(raw.parse::<u32>().map_err(|_| MetricsError::Parse {
+            detail: format!("metric {LORA_REQUESTS_INFO}: max_lora {raw:?} is not a number"),
+        })?),
+    };
+
+    let parsed: f64 = value.parse().map_err(|_| MetricsError::Parse {
+        detail: format!("metric {LORA_REQUESTS_INFO}: value {value:?} is not a number"),
+    })?;
+    if !parsed.is_finite() {
+        return Err(MetricsError::Parse {
+            detail: format!("metric {LORA_REQUESTS_INFO}: value {parsed} is not finite"),
+        });
+    }
+
+    Ok(LoraSeries {
+        running_lora_adapters,
+        waiting_lora_adapters,
+        max_lora,
+        value: parsed,
+    })
 }
 
 #[cfg(test)]
@@ -891,5 +1004,108 @@ mod tests {
         assert_eq!(draft, Some(45));
         assert_eq!(accepted, Some(27));
         assert_eq!(drafts, Some(9));
+    }
+}
+
+#[cfg(test)]
+mod lora_tests {
+    use super::*;
+
+    // Captured live from llm-d-inference-sim e924683, on its event path.
+    const TIE_ALL: &str =
+        include_str!("../tests/fixtures/llm-d-inference-sim-e924683-lora-tie-all.txt");
+    const TIE_TOP: &str =
+        include_str!("../tests/fixtures/llm-d-inference-sim-e924683-lora-tie-top.txt");
+    const UNIQUE: &str =
+        include_str!("../tests/fixtures/llm-d-inference-sim-e924683-lora-unique-latest.txt");
+    // Already committed.
+    const SIM_V082: &str = include_str!("../tests/fixtures/llm-d-inference-sim-v0.8.2-metrics.txt");
+    const VLLM: &str = include_str!("../tests/fixtures/vllm-prometheus-client-exposition.txt");
+
+    fn running(s: &LoraSeries) -> Vec<&str> {
+        s.running_lora_adapters.iter().map(String::as_str).collect()
+    }
+
+    #[test]
+    fn a_tie_across_every_series_is_not_resolved() {
+        let LoraReading::Tie(c) = parse_lora(TIE_ALL).unwrap() else {
+            panic!("expected a tie");
+        };
+        assert_eq!(c.len(), 4);
+        // Body order is kept: in this capture the empty set comes first.
+        assert!(c[0].running_lora_adapters.is_empty());
+    }
+
+    #[test]
+    fn an_older_series_is_excluded_and_a_tie_on_top_is_kept() {
+        let LoraReading::Tie(c) = parse_lora(TIE_TOP).unwrap() else {
+            panic!("expected a tie");
+        };
+        let sets: Vec<Vec<&str>> = c.iter().map(running).collect();
+        assert_eq!(sets, vec![Vec::<&str>::new(), vec!["a2"]]);
+    }
+
+    #[test]
+    fn one_series_strictly_the_most_recent_is_chosen() {
+        let LoraReading::Latest(s) = parse_lora(UNIQUE).unwrap() else {
+            panic!("expected one latest series");
+        };
+        assert_eq!(running(&s), vec!["a1"]);
+        assert_eq!(s.max_lora, Some(8));
+    }
+
+    #[test]
+    fn a_single_series_with_empty_lists_reads_as_the_latest() {
+        let LoraReading::Latest(s) = parse_lora(SIM_V082).unwrap() else {
+            panic!("expected one latest series");
+        };
+        assert!(s.running_lora_adapters.is_empty());
+        assert!(s.waiting_lora_adapters.is_empty());
+        assert_eq!(s.max_lora, Some(1));
+    }
+
+    #[test]
+    fn a_body_without_the_family_has_no_series() {
+        assert_eq!(parse_lora(VLLM).unwrap(), LoraReading::NoSeries);
+    }
+
+    #[test]
+    fn the_rust_frontend_shape_parses_without_max_lora() {
+        // The label set is copied from vLLM's Rust frontend tests
+        // (rust/src/engine-core-client/src/metrics.rs:462 at 27757dde02),
+        // which normalise the value to `<ts>`. The value here is inserted,
+        // and is the one part of this body not taken from a producer. One
+        // series, because that frontend exposes at most one.
+        let body = "vllm:lora_requests_info{running_lora_adapters=\"a,b,c\",\
+                    waiting_lora_adapters=\"d\"} 1790060021\n";
+        let LoraReading::Latest(s) = parse_lora(body).unwrap() else {
+            panic!("expected one latest series");
+        };
+        assert_eq!(running(&s), vec!["a", "b", "c"]);
+        assert_eq!(s.waiting_lora_adapters, vec!["d".to_string()]);
+        assert_eq!(s.max_lora, None);
+    }
+
+    #[test]
+    fn fractions_within_one_second_are_not_a_tie() {
+        // Constructed: no real body from a producer with sub-second values
+        // exists to copy. It guards the choice to read the value as f64;
+        // truncated to whole seconds, these two would tie.
+        let body = "vllm:lora_requests_info{max_lora=\"8\",running_lora_adapters=\"a1\",\
+                    waiting_lora_adapters=\"\"} 1790060021.25\n\
+                    vllm:lora_requests_info{max_lora=\"8\",running_lora_adapters=\"a2\",\
+                    waiting_lora_adapters=\"\"} 1790060021.75\n";
+        let LoraReading::Latest(s) = parse_lora(body).unwrap() else {
+            panic!("expected one latest series");
+        };
+        assert_eq!(running(&s), vec!["a2"]);
+    }
+
+    #[test]
+    fn a_value_that_is_not_a_number_is_an_error() {
+        // Constructed: it exercises the parser's rejection, not a producer.
+        let body = "vllm:lora_requests_info{max_lora=\"1\",running_lora_adapters=\"\",\
+                    waiting_lora_adapters=\"\"} nope\n";
+        assert!(parse_lora(body).is_err());
     }
 }

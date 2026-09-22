@@ -21,13 +21,15 @@
 
 use std::time::Instant;
 
-use is_core::{KvCacheSample, KvCacheTimeline, PhaseSample, PhaseTimeline, SpecTimeline};
+use is_core::{
+    KvCacheSample, KvCacheTimeline, LoraObservation, PhaseSample, PhaseTimeline, SpecTimeline,
+};
 use tokio::sync::oneshot;
 use tokio::time::{interval, MissedTickBehavior};
 
 use crate::config::MetricsConfig;
 use crate::error::MetricsError;
-use crate::parse::{parse_kvcache, parse_phase, parse_spec, SpecReading};
+use crate::parse::{parse_kvcache, parse_lora, parse_phase, parse_spec, LoraReading, SpecReading};
 
 /// Builds the HTTP client used for scraping.
 ///
@@ -363,6 +365,46 @@ pub async fn scrape_spec_during(
     }
 
     timeline
+}
+
+/// Reads `vllm:lora_requests_info` once and records what it found (ADR-017
+/// D6 and its postscript).
+///
+/// Called once, as the sampling window closes, not from a loop. It builds
+/// its own client through [`build_client`], so the read has the timeout the
+/// scrape loops have, and it returns no error: a read that does not
+/// complete, for any reason, is recorded as [`LoraObservation::ReadFailed`].
+/// ADR-017 D6 decides that a failed read records nothing and says so.
+pub async fn scrape_lora_once(config: &MetricsConfig) -> LoraObservation {
+    match fetch_lora(config).await {
+        Ok(reading) => reading.into(),
+        Err(_) => LoraObservation::ReadFailed,
+    }
+}
+
+/// The request and the parse behind [`scrape_lora_once`]: the steps of
+/// [`scrape_spec_once`], preceded by building the client.
+async fn fetch_lora(config: &MetricsConfig) -> Result<LoraReading, MetricsError> {
+    let client = build_client()?;
+    let response = client
+        .get(&config.endpoint)
+        .send()
+        .await
+        .map_err(|source| MetricsError::Http { source })?;
+
+    let status = response.status();
+    if !status.is_success() {
+        return Err(MetricsError::Status {
+            status: status.as_u16(),
+        });
+    }
+
+    let body = response
+        .text()
+        .await
+        .map_err(|source| MetricsError::Http { source })?;
+
+    parse_lora(&body)
 }
 
 #[cfg(test)]
@@ -725,5 +767,71 @@ mod tests {
         let timeline = handle.await.unwrap();
 
         assert!(timeline.is_empty());
+    }
+}
+
+#[cfg(test)]
+mod lora_tests {
+    use super::*;
+    use crate::config::Engine;
+    use wiremock::matchers::{method, path};
+    use wiremock::{Mock, MockServer, ResponseTemplate};
+
+    // Captured live from llm-d-inference-sim e924683.
+    const TIE_TOP: &str =
+        include_str!("../tests/fixtures/llm-d-inference-sim-e924683-lora-tie-top.txt");
+
+    async fn serving(status: u16, body: &str) -> MockServer {
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path("/metrics"))
+            .respond_with(ResponseTemplate::new(status).set_body_string(body))
+            .mount(&server)
+            .await;
+        server
+    }
+
+    fn config(endpoint: String) -> MetricsConfig {
+        MetricsConfig::new(endpoint, "Qwen/Qwen2.5-7B-Instruct", Engine::Vllm)
+    }
+
+    #[tokio::test]
+    async fn a_live_body_is_recorded_as_what_it_holds() {
+        let server = serving(200, TIE_TOP).await;
+        let obs = scrape_lora_once(&config(format!("{}/metrics", server.uri()))).await;
+        let LoraObservation::Tie { candidates } = &obs else {
+            panic!("expected a tie, got {obs:?}");
+        };
+        assert_eq!(candidates.len(), 2);
+    }
+
+    #[tokio::test]
+    async fn a_non_success_status_is_a_failed_read() {
+        let server = serving(503, "").await;
+        let obs = scrape_lora_once(&config(format!("{}/metrics", server.uri()))).await;
+        assert_eq!(obs, LoraObservation::ReadFailed);
+    }
+
+    #[tokio::test]
+    async fn an_unreachable_endpoint_is_a_failed_read() {
+        // A port bound and then released, so nothing listens on it.
+        let port = std::net::TcpListener::bind("127.0.0.1:0")
+            .unwrap()
+            .local_addr()
+            .unwrap()
+            .port();
+        let obs = scrape_lora_once(&config(format!("http://127.0.0.1:{port}/metrics"))).await;
+        assert_eq!(obs, LoraObservation::ReadFailed);
+    }
+
+    #[tokio::test]
+    async fn a_series_that_does_not_parse_is_a_failed_read() {
+        // Constructed: it exercises the rejection, not a producer. A body
+        // that arrives but cannot be read is a failed read under D6.
+        let body = "vllm:lora_requests_info{max_lora=\"1\",running_lora_adapters=\"\",\
+                    waiting_lora_adapters=\"\"} nope\n";
+        let server = serving(200, body).await;
+        let obs = scrape_lora_once(&config(format!("{}/metrics", server.uri()))).await;
+        assert_eq!(obs, LoraObservation::ReadFailed);
     }
 }

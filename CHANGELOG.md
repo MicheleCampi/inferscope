@@ -22,6 +22,17 @@ run that produced it.
 
 ### Added
 
+- **LoRA adapter provenance in `--sample-only` (ADR-017).** When a metrics
+  endpoint, model and engine are given, the report gains a `lora` field:
+  one read of `vllm:lora_requests_info` as the sampling window closes,
+  recorded as the most recent series (`latest`), several series tied on the
+  largest value with none chosen (`tie`), no series (`no_series`), or a
+  read that did not complete (`read_failed`). The read is started when the
+  window closes and joined last, so a slow endpoint cannot hold back the
+  cancellation of the other samplers; it can delay the report by up to the
+  5 s client timeout. `LoraProvenance::resolve` reads an absent field
+  against the schema version.
+
 - **ADR-015: cost attribution per trajectory step.** The design; the entries
   below implement it. One basis per derivation, with the rate carried inside
   the basis so a figure is never separable from the assumption that produced
@@ -57,6 +68,14 @@ run that produced it.
   not listed would reopen exactly that silence.
 
 ### Changed
+
+- **`REPORT_SCHEMA_VERSION` is 2.** The `lora` field's absence means
+  different things before and after ADR-017, and only the version tells
+  them apart. Before this change the version had one reader in production,
+  `HitRateProvenance::resolve`, which treats every present version alike
+  and is unaffected; `LoraProvenance::resolve` is the second, and the first
+  to compare the number. A compile-time assertion stops a build from
+  writing a version below the first that carries `lora`.
 
 - `--sample-only` now scrapes the KV cache alongside the phase and
   speculative series, under the same guard on endpoint, model and engine.

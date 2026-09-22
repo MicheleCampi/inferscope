@@ -42,8 +42,8 @@ pub use error::MetricsError;
 // re-export was a residue of when parse_kvcache was the module's only
 // function, not a statement that the other two are less public: the three
 // read three independent signals off the same body and sit on one level.
-pub use parse::{parse_kvcache, parse_phase, parse_spec, SpecReading};
+pub use parse::{parse_kvcache, parse_lora, parse_phase, parse_spec, LoraReading, SpecReading};
 pub use scrape::{
-    scrape_during, scrape_once, scrape_phase_during, scrape_phase_once, scrape_spec_during,
-    scrape_spec_once,
+    scrape_during, scrape_lora_once, scrape_once, scrape_phase_during, scrape_phase_once,
+    scrape_spec_during, scrape_spec_once,
 };

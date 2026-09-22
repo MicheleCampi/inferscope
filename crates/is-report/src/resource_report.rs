@@ -82,6 +82,13 @@ pub struct ResourceReport {
     /// absent, no GPU energy basis existed, or a counter regressed.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub trajectory: Option<crate::trajectory::TrajectoryMetrics>,
+
+    /// The LoRA adapters the server reported as the window closed, from one
+    /// read of `vllm:lora_requests_info` (ADR-017). `None` when no read was
+    /// made; what that absence means depends on `schema_version`, and
+    /// [`LoraProvenance::resolve`] reads it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub lora: Option<is_core::LoraObservation>,
     /// Version of the serialized report schema (ADR-014 D7).
     ///
     /// Carried on both report shapes so a reader need not know which
@@ -96,6 +103,49 @@ pub struct ResourceReport {
 /// Render a `ResourceReport` as pretty JSON.
 pub fn render_resource_json(report: &ResourceReport) -> Result<String, serde_json::Error> {
     serde_json::to_string_pretty(report)
+}
+
+/// The first [`crate::REPORT_SCHEMA_VERSION`] at which a build could record
+/// [`ResourceReport::lora`] (ADR-017).
+const FIRST_VERSION_WITH_LORA: u32 = 2;
+
+// A build writing a lower version would record reports that, with no read,
+// resolve as predating ADR-017. Stop the build rather than write them.
+const _: () = assert!(crate::REPORT_SCHEMA_VERSION >= FIRST_VERSION_WITH_LORA);
+
+/// What a report can say about the LoRA adapters of its window (ADR-017 D4
+/// and its postscript).
+///
+/// Resolved in the manner of `HitRateProvenance`, and unlike it in one
+/// respect: that treats every present schema version alike, while this
+/// compares the version with the first that could carry the field. Below it
+/// the report predates the field; at or above it the build could have
+/// recorded the set.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum LoraProvenance<'a> {
+    /// A read was recorded, whatever its outcome.
+    Recorded(&'a is_core::LoraObservation),
+    /// The report predates ADR-017: its build had no field to record the set
+    /// in. Nothing about the adapters is known.
+    PredatesAdr017,
+    /// The report comes from a build that could record the set and did not,
+    /// as happens when no metrics endpoint is given. Nothing is asserted.
+    NotRecorded,
+}
+
+impl<'a> LoraProvenance<'a> {
+    /// Resolves what a report says about its adapters. A recorded read
+    /// always wins; an absence is read against the schema version.
+    pub fn resolve(
+        schema_version: Option<u32>,
+        lora: Option<&'a is_core::LoraObservation>,
+    ) -> Self {
+        match (lora, schema_version) {
+            (Some(obs), _) => Self::Recorded(obs),
+            (None, Some(v)) if v >= FIRST_VERSION_WITH_LORA => Self::NotRecorded,
+            (None, _) => Self::PredatesAdr017,
+        }
+    }
 }
 
 #[cfg(test)]
@@ -128,6 +178,7 @@ mod tests {
                 phase_energy_divergence: Some(-0.4999714),
             }),
             trajectory: None,
+            lora: None,
             schema_version: Some(crate::metrics::REPORT_SCHEMA_VERSION),
         };
         let json = render_resource_json(&report).unwrap();
@@ -151,6 +202,7 @@ mod tests {
             spec_timeline: None,
             phase_energy: None,
             trajectory: None,
+            lora: None,
             schema_version: None,
         };
         let json = render_resource_json(&report).unwrap();
@@ -196,6 +248,7 @@ mod tests {
             phase_energy: None,
             spec_timeline: Some(timeline),
             trajectory: None,
+            lora: None,
             schema_version: None,
         };
 
@@ -218,6 +271,84 @@ mod tests {
         assert_eq!(
             1.0 + st.samples[0].accepted_tokens as f64 / st.samples[0].drafts as f64,
             4.0
+        );
+    }
+}
+
+#[cfg(test)]
+mod lora_tests {
+    use super::*;
+    use is_core::{LoraObservation, LoraSeries};
+
+    fn report(lora: Option<LoraObservation>, schema_version: Option<u32>) -> ResourceReport {
+        ResourceReport {
+            reference_instant_unix_ns: None,
+            pid: 1,
+            include_descendants: false,
+            sample_period_ms: 100,
+            duration_secs: 1,
+            resource: None,
+            gpu: None,
+            kvcache_timeline: None,
+            kvcache: None,
+            phase_timeline: None,
+            phase_energy: None,
+            spec_timeline: None,
+            trajectory: None,
+            lora,
+            schema_version,
+        }
+    }
+
+    fn latest() -> LoraObservation {
+        LoraObservation::Latest {
+            series: LoraSeries {
+                running_lora_adapters: vec!["a1".to_string()],
+                waiting_lora_adapters: Vec::new(),
+                max_lora: Some(8),
+                value: 1.790060021e9,
+            },
+        }
+    }
+
+    #[test]
+    fn a_recorded_read_survives_a_round_trip() {
+        let r = report(Some(latest()), Some(crate::REPORT_SCHEMA_VERSION));
+        let back: ResourceReport =
+            serde_json::from_str(&render_resource_json(&r).unwrap()).unwrap();
+        assert_eq!(back, r);
+    }
+
+    #[test]
+    fn no_read_leaves_the_field_out_of_the_json() {
+        let json = render_resource_json(&report(None, Some(crate::REPORT_SCHEMA_VERSION))).unwrap();
+        assert!(!json.contains("\"lora\""), "{json}");
+    }
+
+    #[test]
+    fn a_recorded_read_wins_whatever_the_version() {
+        let obs = latest();
+        for v in [None, Some(1), Some(2)] {
+            assert_eq!(
+                LoraProvenance::resolve(v, Some(&obs)),
+                LoraProvenance::Recorded(&obs)
+            );
+        }
+    }
+
+    #[test]
+    fn an_absence_is_read_against_the_version() {
+        assert_eq!(
+            LoraProvenance::resolve(None, None),
+            LoraProvenance::PredatesAdr017
+        );
+        assert_eq!(
+            LoraProvenance::resolve(Some(1), None),
+            LoraProvenance::PredatesAdr017
+        );
+        assert_eq!(
+            LoraProvenance::resolve(Some(2), None),
+            LoraProvenance::NotRecorded
         );
     }
 }

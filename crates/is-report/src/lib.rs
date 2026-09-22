@@ -47,7 +47,7 @@ pub use metrics::{
     ResourceMetrics, TimingMetrics, REPORT_SCHEMA_VERSION,
 };
 pub use render::{render_json, render_text};
-pub use resource_report::{render_resource_json, ResourceReport};
+pub use resource_report::{render_resource_json, LoraProvenance, ResourceReport};
 pub use trajectory::{
     derive_trajectory, derive_trajectory_from_timelines, parse_steps, DropReason, DroppedStep,
     StepFileError, StepKind, StepMetrics, StepRecord, TrajectoryMetrics,

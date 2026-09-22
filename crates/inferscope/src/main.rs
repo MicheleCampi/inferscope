@@ -13,7 +13,9 @@ use std::time::{Duration, Instant};
 
 use tokio::sync::oneshot;
 
-use is_metrics::{scrape_during, scrape_phase_during, scrape_spec_during, Engine, MetricsConfig};
+use is_metrics::{
+    scrape_during, scrape_lora_once, scrape_phase_during, scrape_spec_during, Engine, MetricsConfig,
+};
 
 use is_probe::{config::ProbeConfig, runner::run as run_probe};
 use is_report::{
@@ -503,8 +505,10 @@ async fn run_sample_only(
     // would collect nothing on the exact run ADR-016 exists to enable.
     //
     // All three scrapes run here, KV included: a report from this path
-    // carries the same sections as one from the probe path.
-    let scrape_handles = match (
+    // carries the same sections as one from the probe path. The LoRA read
+    // of ADR-017 is the exception: only `ResourceReport` carries its field,
+    // so it runs on this path alone.
+    let (scrape_handles, lora_cfg) = match (
         args.metrics_endpoint.as_deref(),
         args.model.as_deref(),
         engine,
@@ -515,22 +519,33 @@ async fn run_sample_only(
                 MetricsConfig::with_period(endpoint, model, engine, args.metrics_period());
             let spec_cfg =
                 MetricsConfig::with_period(endpoint, model, engine, args.metrics_period());
+            let lora_cfg =
+                MetricsConfig::with_period(endpoint, model, engine, args.metrics_period());
             let (kv_cancel, kv_rx) = oneshot::channel();
             let (phase_cancel, phase_rx) = oneshot::channel();
             let (spec_cancel, spec_rx) = oneshot::channel();
-            Some((
-                tokio::spawn(scrape_during(kv_cfg, start, kv_rx)),
-                kv_cancel,
-                tokio::spawn(scrape_phase_during(phase_cfg, start, phase_rx)),
-                phase_cancel,
-                tokio::spawn(scrape_spec_during(spec_cfg, start, spec_rx)),
-                spec_cancel,
-            ))
+            (
+                Some((
+                    tokio::spawn(scrape_during(kv_cfg, start, kv_rx)),
+                    kv_cancel,
+                    tokio::spawn(scrape_phase_during(phase_cfg, start, phase_rx)),
+                    phase_cancel,
+                    tokio::spawn(scrape_spec_during(spec_cfg, start, spec_rx)),
+                    spec_cancel,
+                )),
+                Some(lora_cfg),
+            )
         }
-        _ => None,
+        _ => (None, None),
     };
     // Sample for the requested duration, then cancel.
     tokio::time::sleep(duration).await;
+
+    // ADR-017 D6: one read of the active LoRA adapters as the window closes.
+    // Started here and joined last, not awaited here: a slow endpoint would
+    // otherwise hold back every cancel below and stretch the other windows
+    // past the requested duration.
+    let lora_task = lora_cfg.map(|cfg| tokio::spawn(async move { scrape_lora_once(&cfg).await }));
 
     let _ = sysmon_cancel_tx.send(());
     let resource_timeline = match sysmon_task.await {
@@ -623,6 +638,16 @@ async fn run_sample_only(
         }
         None => None,
     };
+    let lora = match lora_task {
+        Some(task) => Some(match task.await {
+            Ok(observation) => observation,
+            Err(e) => {
+                eprintln!("inferscope: warning: LoRA read task ended abnormally: {e}");
+                is_core::LoraObservation::ReadFailed
+            }
+        }),
+        None => None,
+    };
     let report = ResourceReport {
         reference_instant_unix_ns,
         pid,
@@ -637,6 +662,7 @@ async fn run_sample_only(
         phase_energy,
         spec_timeline,
         trajectory,
+        lora,
         schema_version: Some(is_report::REPORT_SCHEMA_VERSION),
     };
 
@@ -892,6 +918,7 @@ mod tests {
             spec_timeline: None,
             phase_energy: None,
             trajectory,
+            lora: None,
             schema_version: None,
         }
     }

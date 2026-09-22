@@ -1,0 +1,117 @@
+# HELP vllm:cache_config_info Information of the LLMEngine CacheConfig.
+# TYPE vllm:cache_config_info gauge
+vllm:cache_config_info{block_size="0",cache_dtype="",num_cpu_blocks="0",num_gpu_blocks="0"} 1
+# HELP vllm:inter_token_latency_seconds Histogram of inter-token latency in seconds.
+# TYPE vllm:inter_token_latency_seconds histogram
+vllm:inter_token_latency_seconds_bucket{model_name="Qwen/Qwen2.5-7B-Instruct",le="0.01"} 0
+vllm:inter_token_latency_seconds_bucket{model_name="Qwen/Qwen2.5-7B-Instruct",le="0.025"} 0
+vllm:inter_token_latency_seconds_bucket{model_name="Qwen/Qwen2.5-7B-Instruct",le="0.05"} 0
+vllm:inter_token_latency_seconds_bucket{model_name="Qwen/Qwen2.5-7B-Instruct",le="0.075"} 0
+vllm:inter_token_latency_seconds_bucket{model_name="Qwen/Qwen2.5-7B-Instruct",le="0.1"} 19
+vllm:inter_token_latency_seconds_bucket{model_name="Qwen/Qwen2.5-7B-Instruct",le="0.15"} 19
+vllm:inter_token_latency_seconds_bucket{model_name="Qwen/Qwen2.5-7B-Instruct",le="0.2"} 19
+vllm:inter_token_latency_seconds_bucket{model_name="Qwen/Qwen2.5-7B-Instruct",le="0.3"} 19
+vllm:inter_token_latency_seconds_bucket{model_name="Qwen/Qwen2.5-7B-Instruct",le="0.4"} 19
+vllm:inter_token_latency_seconds_bucket{model_name="Qwen/Qwen2.5-7B-Instruct",le="0.5"} 19
+vllm:inter_token_latency_seconds_bucket{model_name="Qwen/Qwen2.5-7B-Instruct",le="0.75"} 19
+vllm:inter_token_latency_seconds_bucket{model_name="Qwen/Qwen2.5-7B-Instruct",le="1"} 19
+vllm:inter_token_latency_seconds_bucket{model_name="Qwen/Qwen2.5-7B-Instruct",le="2.5"} 19
+vllm:inter_token_latency_seconds_bucket{model_name="Qwen/Qwen2.5-7B-Instruct",le="5"} 19
+vllm:inter_token_latency_seconds_bucket{model_name="Qwen/Qwen2.5-7B-Instruct",le="7.5"} 19
+vllm:inter_token_latency_seconds_bucket{model_name="Qwen/Qwen2.5-7B-Instruct",le="10"} 19
+vllm:inter_token_latency_seconds_bucket{model_name="Qwen/Qwen2.5-7B-Instruct",le="20"} 19
+vllm:inter_token_latency_seconds_bucket{model_name="Qwen/Qwen2.5-7B-Instruct",le="40"} 19
+vllm:inter_token_latency_seconds_bucket{model_name="Qwen/Qwen2.5-7B-Instruct",le="80"} 19
+vllm:inter_token_latency_seconds_bucket{model_name="Qwen/Qwen2.5-7B-Instruct",le="+Inf"} 19
+vllm:inter_token_latency_seconds_sum{model_name="Qwen/Qwen2.5-7B-Instruct"} 1.9000000000000006
+vllm:inter_token_latency_seconds_count{model_name="Qwen/Qwen2.5-7B-Instruct"} 19
+# HELP vllm:kv_cache_usage_perc Prometheus metric for the fraction of KV-cache blocks currently in use (from 0 to 1).
+# TYPE vllm:kv_cache_usage_perc gauge
+vllm:kv_cache_usage_perc{model_name="Qwen/Qwen2.5-7B-Instruct"} 0
+# HELP vllm:lora_requests_info Running stats on lora requests.
+# TYPE vllm:lora_requests_info gauge
+vllm:lora_requests_info{max_lora="8",running_lora_adapters="",waiting_lora_adapters=""} 1.790060019e+09
+vllm:lora_requests_info{max_lora="8",running_lora_adapters="a1",waiting_lora_adapters=""} 1.790060021e+09
+# HELP vllm:num_requests_running Number of requests currently running on GPU.
+# TYPE vllm:num_requests_running gauge
+vllm:num_requests_running{model_name="Qwen/Qwen2.5-7B-Instruct"} 1
+# HELP vllm:num_requests_waiting Prometheus metric for the number of queued requests.
+# TYPE vllm:num_requests_waiting gauge
+vllm:num_requests_waiting{model_name="Qwen/Qwen2.5-7B-Instruct"} 0
+# HELP vllm:request_prefill_time_seconds Histogram of time spent in PREFILL phase for request.
+# TYPE vllm:request_prefill_time_seconds histogram
+vllm:request_prefill_time_seconds_bucket{model_name="Qwen/Qwen2.5-7B-Instruct",le="0.3"} 1
+vllm:request_prefill_time_seconds_bucket{model_name="Qwen/Qwen2.5-7B-Instruct",le="0.5"} 1
+vllm:request_prefill_time_seconds_bucket{model_name="Qwen/Qwen2.5-7B-Instruct",le="0.8"} 1
+vllm:request_prefill_time_seconds_bucket{model_name="Qwen/Qwen2.5-7B-Instruct",le="1"} 1
+vllm:request_prefill_time_seconds_bucket{model_name="Qwen/Qwen2.5-7B-Instruct",le="1.5"} 1
+vllm:request_prefill_time_seconds_bucket{model_name="Qwen/Qwen2.5-7B-Instruct",le="2"} 1
+vllm:request_prefill_time_seconds_bucket{model_name="Qwen/Qwen2.5-7B-Instruct",le="2.5"} 1
+vllm:request_prefill_time_seconds_bucket{model_name="Qwen/Qwen2.5-7B-Instruct",le="5"} 1
+vllm:request_prefill_time_seconds_bucket{model_name="Qwen/Qwen2.5-7B-Instruct",le="10"} 1
+vllm:request_prefill_time_seconds_bucket{model_name="Qwen/Qwen2.5-7B-Instruct",le="15"} 1
+vllm:request_prefill_time_seconds_bucket{model_name="Qwen/Qwen2.5-7B-Instruct",le="20"} 1
+vllm:request_prefill_time_seconds_bucket{model_name="Qwen/Qwen2.5-7B-Instruct",le="30"} 1
+vllm:request_prefill_time_seconds_bucket{model_name="Qwen/Qwen2.5-7B-Instruct",le="40"} 1
+vllm:request_prefill_time_seconds_bucket{model_name="Qwen/Qwen2.5-7B-Instruct",le="50"} 1
+vllm:request_prefill_time_seconds_bucket{model_name="Qwen/Qwen2.5-7B-Instruct",le="60"} 1
+vllm:request_prefill_time_seconds_bucket{model_name="Qwen/Qwen2.5-7B-Instruct",le="120"} 1
+vllm:request_prefill_time_seconds_bucket{model_name="Qwen/Qwen2.5-7B-Instruct",le="240"} 1
+vllm:request_prefill_time_seconds_bucket{model_name="Qwen/Qwen2.5-7B-Instruct",le="480"} 1
+vllm:request_prefill_time_seconds_bucket{model_name="Qwen/Qwen2.5-7B-Instruct",le="960"} 1
+vllm:request_prefill_time_seconds_bucket{model_name="Qwen/Qwen2.5-7B-Instruct",le="1920"} 1
+vllm:request_prefill_time_seconds_bucket{model_name="Qwen/Qwen2.5-7B-Instruct",le="7680"} 1
+vllm:request_prefill_time_seconds_bucket{model_name="Qwen/Qwen2.5-7B-Instruct",le="+Inf"} 1
+vllm:request_prefill_time_seconds_sum{model_name="Qwen/Qwen2.5-7B-Instruct"} 0
+vllm:request_prefill_time_seconds_count{model_name="Qwen/Qwen2.5-7B-Instruct"} 1
+# HELP vllm:time_per_output_token_seconds Histogram of time per output token in seconds.
+# TYPE vllm:time_per_output_token_seconds histogram
+vllm:time_per_output_token_seconds_bucket{model_name="Qwen/Qwen2.5-7B-Instruct",le="0.01"} 0
+vllm:time_per_output_token_seconds_bucket{model_name="Qwen/Qwen2.5-7B-Instruct",le="0.025"} 0
+vllm:time_per_output_token_seconds_bucket{model_name="Qwen/Qwen2.5-7B-Instruct",le="0.05"} 0
+vllm:time_per_output_token_seconds_bucket{model_name="Qwen/Qwen2.5-7B-Instruct",le="0.075"} 0
+vllm:time_per_output_token_seconds_bucket{model_name="Qwen/Qwen2.5-7B-Instruct",le="0.1"} 19
+vllm:time_per_output_token_seconds_bucket{model_name="Qwen/Qwen2.5-7B-Instruct",le="0.15"} 19
+vllm:time_per_output_token_seconds_bucket{model_name="Qwen/Qwen2.5-7B-Instruct",le="0.2"} 19
+vllm:time_per_output_token_seconds_bucket{model_name="Qwen/Qwen2.5-7B-Instruct",le="0.3"} 19
+vllm:time_per_output_token_seconds_bucket{model_name="Qwen/Qwen2.5-7B-Instruct",le="0.4"} 19
+vllm:time_per_output_token_seconds_bucket{model_name="Qwen/Qwen2.5-7B-Instruct",le="0.5"} 19
+vllm:time_per_output_token_seconds_bucket{model_name="Qwen/Qwen2.5-7B-Instruct",le="0.75"} 19
+vllm:time_per_output_token_seconds_bucket{model_name="Qwen/Qwen2.5-7B-Instruct",le="1"} 19
+vllm:time_per_output_token_seconds_bucket{model_name="Qwen/Qwen2.5-7B-Instruct",le="2.5"} 19
+vllm:time_per_output_token_seconds_bucket{model_name="Qwen/Qwen2.5-7B-Instruct",le="5"} 19
+vllm:time_per_output_token_seconds_bucket{model_name="Qwen/Qwen2.5-7B-Instruct",le="7.5"} 19
+vllm:time_per_output_token_seconds_bucket{model_name="Qwen/Qwen2.5-7B-Instruct",le="10"} 19
+vllm:time_per_output_token_seconds_bucket{model_name="Qwen/Qwen2.5-7B-Instruct",le="20"} 19
+vllm:time_per_output_token_seconds_bucket{model_name="Qwen/Qwen2.5-7B-Instruct",le="40"} 19
+vllm:time_per_output_token_seconds_bucket{model_name="Qwen/Qwen2.5-7B-Instruct",le="80"} 19
+vllm:time_per_output_token_seconds_bucket{model_name="Qwen/Qwen2.5-7B-Instruct",le="+Inf"} 19
+vllm:time_per_output_token_seconds_sum{model_name="Qwen/Qwen2.5-7B-Instruct"} 1.9000000000000006
+vllm:time_per_output_token_seconds_count{model_name="Qwen/Qwen2.5-7B-Instruct"} 19
+# HELP vllm:time_to_first_token_seconds Histogram of time to first token in seconds.
+# TYPE vllm:time_to_first_token_seconds histogram
+vllm:time_to_first_token_seconds_bucket{model_name="Qwen/Qwen2.5-7B-Instruct",le="0.001"} 1
+vllm:time_to_first_token_seconds_bucket{model_name="Qwen/Qwen2.5-7B-Instruct",le="0.005"} 1
+vllm:time_to_first_token_seconds_bucket{model_name="Qwen/Qwen2.5-7B-Instruct",le="0.01"} 1
+vllm:time_to_first_token_seconds_bucket{model_name="Qwen/Qwen2.5-7B-Instruct",le="0.02"} 1
+vllm:time_to_first_token_seconds_bucket{model_name="Qwen/Qwen2.5-7B-Instruct",le="0.04"} 1
+vllm:time_to_first_token_seconds_bucket{model_name="Qwen/Qwen2.5-7B-Instruct",le="0.06"} 1
+vllm:time_to_first_token_seconds_bucket{model_name="Qwen/Qwen2.5-7B-Instruct",le="0.08"} 1
+vllm:time_to_first_token_seconds_bucket{model_name="Qwen/Qwen2.5-7B-Instruct",le="0.1"} 1
+vllm:time_to_first_token_seconds_bucket{model_name="Qwen/Qwen2.5-7B-Instruct",le="0.25"} 1
+vllm:time_to_first_token_seconds_bucket{model_name="Qwen/Qwen2.5-7B-Instruct",le="0.5"} 1
+vllm:time_to_first_token_seconds_bucket{model_name="Qwen/Qwen2.5-7B-Instruct",le="0.75"} 1
+vllm:time_to_first_token_seconds_bucket{model_name="Qwen/Qwen2.5-7B-Instruct",le="1"} 1
+vllm:time_to_first_token_seconds_bucket{model_name="Qwen/Qwen2.5-7B-Instruct",le="2.5"} 1
+vllm:time_to_first_token_seconds_bucket{model_name="Qwen/Qwen2.5-7B-Instruct",le="5"} 1
+vllm:time_to_first_token_seconds_bucket{model_name="Qwen/Qwen2.5-7B-Instruct",le="7.5"} 1
+vllm:time_to_first_token_seconds_bucket{model_name="Qwen/Qwen2.5-7B-Instruct",le="10"} 1
+vllm:time_to_first_token_seconds_bucket{model_name="Qwen/Qwen2.5-7B-Instruct",le="20"} 1
+vllm:time_to_first_token_seconds_bucket{model_name="Qwen/Qwen2.5-7B-Instruct",le="40"} 1
+vllm:time_to_first_token_seconds_bucket{model_name="Qwen/Qwen2.5-7B-Instruct",le="80"} 1
+vllm:time_to_first_token_seconds_bucket{model_name="Qwen/Qwen2.5-7B-Instruct",le="160"} 1
+vllm:time_to_first_token_seconds_bucket{model_name="Qwen/Qwen2.5-7B-Instruct",le="640"} 1
+vllm:time_to_first_token_seconds_bucket{model_name="Qwen/Qwen2.5-7B-Instruct",le="2560"} 1
+vllm:time_to_first_token_seconds_bucket{model_name="Qwen/Qwen2.5-7B-Instruct",le="+Inf"} 1
+vllm:time_to_first_token_seconds_sum{model_name="Qwen/Qwen2.5-7B-Instruct"} 0
+vllm:time_to_first_token_seconds_count{model_name="Qwen/Qwen2.5-7B-Instruct"} 1
