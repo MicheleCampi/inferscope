@@ -7,6 +7,8 @@
   here is implemented. The premise was reproduced against
   llm-d-inference-sim at `e924683`, with the script that ships in the
   lora-multitenancy-experiment repository.
+- **Implemented in**: Unreleased (8f45c42 shared line splitter; 9278b8c
+  reader, report field and wiring)
 - **Deciders**: Michele Campi
 
 ## Context
