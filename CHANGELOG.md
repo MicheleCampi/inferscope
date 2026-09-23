@@ -89,6 +89,15 @@ run that produced it.
 
 ### Fixed
 
+- **`--metrics-endpoint` now requires `--model`.** The scrape selects its
+  series by the `model_name` label, so an endpoint given without a model
+  matched nothing and the report carried no engine metrics — silently, with
+  a successful exit. On the probe path that was a partial report; since the
+  KV scrape was wired into `--sample-only`, it was an empty one. clap now
+  rejects the combination, as it already did for `--engine`. Five pieces of
+  documentation said `--model` was not needed on the attach path and have
+  been corrected.
+
 - **A comma inside a label value made a whole metric family unreadable.**
   `extract_label` split the label block on `,` and then required every
   fragment to carry an `=`; a value containing a comma is cut in two by

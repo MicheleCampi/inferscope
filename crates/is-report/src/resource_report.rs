@@ -44,7 +44,7 @@ pub struct ResourceReport {
     /// requested, the feature is absent, or NVML was unavailable.
     pub gpu: Option<GpuMetrics>,
     /// The raw KV-cache timeline scraped from the engine's Prometheus
-    /// endpoint during the sampling window, if `--metrics-endpoint` was
+    /// endpoint during the sampling window, if the run scraped an engine
     /// supplied (ADR-011). `None` when no endpoint was configured or no
     /// scrape succeeded.
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -55,7 +55,7 @@ pub struct ResourceReport {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub kvcache: Option<KvCacheMetrics>,
     /// The raw per-phase timeline scraped from the engine's Prometheus
-    /// endpoint during the sampling window, if `--metrics-endpoint` was
+    /// endpoint during the sampling window, if the run scraped an engine
     /// supplied (ADR-012). `None` when no endpoint was configured or no
     /// scrape succeeded.
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -67,7 +67,7 @@ pub struct ResourceReport {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub phase_energy: Option<PhaseEnergyMetrics>,
     /// The raw speculative-decoding timeline scraped during the sampling
-    /// window, if `--metrics-endpoint` was supplied (ADR-016). This is
+    /// window, if the run scraped an engine supplied (ADR-016). This is
     /// the campaign path: a speculative run is driven by an external
     /// load generator against a server started with a speculative
     /// config, and inferscope attaches to its PID (ADR-016 D6).

@@ -66,8 +66,10 @@ pub struct Args {
     /// `--sample-only` window alike - and the report carries the
     /// window hit rate. When unset, no scrape happens and the
     /// KV-cache section is absent. The `--model` value selects the
-    /// `model_name` label series.
-    #[arg(long, requires = "engine")]
+    /// `model_name` label series, and is required with this flag: a
+    /// scrape without it matches no series and the report carries no
+    /// engine metrics at all.
+    #[arg(long, requires = "engine", requires = "model")]
     pub metrics_endpoint: Option<String>,
     /// Metric vocabulary of the engine behind `--metrics-endpoint`
     /// (ADR-014 D6). Required whenever an endpoint is scraped, with
@@ -126,8 +128,9 @@ pub struct Args {
     ///
     /// Use this to profile a server while an external load generator
     /// (e.g. AIPerf) drives the traffic. Requires `--pid` and
-    /// `--duration-secs`. In this mode `--endpoint`, `--model`, and
-    /// `--prompt` are not used and need not be supplied. The output
+    /// `--duration-secs`. In this mode `--endpoint` and `--prompt` are
+    /// not used and need not be supplied; `--model` is needed only when
+    /// `--metrics-endpoint` is given, to select the scraped series. The output
     /// is a resource-only report (no timing section). See ADR-009.
     #[arg(long, default_value_t = false)]
     pub sample_only: bool,
@@ -439,9 +442,10 @@ mod tests {
     #[test]
     fn sample_only_accepts_metrics_endpoint_and_model() {
         // The CUDA-graphs experiment attaches via --sample-only and also
-        // scrapes per-phase metrics (ADR-012). --model is not required in
-        // sample-only mode but must remain permitted, so the phase scrape
-        // can select its model_name label series.
+        // scrapes per-phase metrics (ADR-012). --model is what selects the
+        // model_name label series, so this combination must parse. Since
+        // 1f792fd it is also the only way to scrape on this path: see
+        // scraping_without_a_model_is_rejected.
         let args = Args::try_parse_from([
             "inferscope",
             "--sample-only",
@@ -493,6 +497,28 @@ mod tests {
         .expect_err("--metrics-endpoint without --engine should be rejected");
         assert_eq!(err.kind(), clap::error::ErrorKind::MissingRequiredArgument);
     }
+    #[test]
+    fn scraping_without_a_model_is_rejected() {
+        // The scrape selects its series by the `model_name` label, so an
+        // endpoint given without a model produces a report with no engine
+        // metrics at all. Before 1f792fd that was a partial report on the
+        // probe path; on the attach path it is a silent empty one.
+        let err = Args::try_parse_from([
+            "inferscope",
+            "--sample-only",
+            "--pid",
+            "1",
+            "--duration-secs",
+            "5",
+            "--metrics-endpoint",
+            "http://localhost:8000/metrics",
+            "--engine",
+            "vllm",
+        ])
+        .expect_err("--metrics-endpoint without --model should be rejected");
+        assert_eq!(err.kind(), clap::error::ErrorKind::MissingRequiredArgument);
+    }
+
     /// Parses a sample-only invocation that scrapes, with the given
     /// engine flags appended. Keeps the four resolution tests to their
     /// one differing input.
