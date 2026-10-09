@@ -209,10 +209,13 @@ pub async fn sample_gpu_during(
 /// Joins `start` and `end` on the device indices present in *both*
 /// (a device whose counter read failed in either snapshot is omitted —
 /// it has no trustworthy delta). The per-device value is
-/// `end - start` via `saturating_sub`, which guards a driver reload
-/// mid-window: the monotonic counter would reset, making `end < start`,
-/// and saturating to 0 is a truthful "no valid measurement" rather than
-/// a u64 wrap to a huge bogus figure.
+/// `end - start`. A driver reload mid-window resets the monotonic counter
+/// and makes `end < start`; that device is omitted too, since it has no
+/// trustworthy delta either, and no u64 wrap can occur. A zero in its place
+/// would enter the aggregate as a counter reading of no energy, and the
+/// aggregate would stay marked `Counter`. Omitted, the device falls back to
+/// its power integral in is-report, which marks the aggregate
+/// `IntegratedFallback`.
 ///
 /// Returns `None` when no device yields a delta, so the caller leaves
 /// `GpuTimeline::energy` absent and the report falls back to the
@@ -222,11 +225,14 @@ fn compute_energy_delta(start: Vec<(u32, u64)>, end: Vec<(u32, u64)>) -> Option<
     let mut energy: Vec<DeviceEnergy> = end
         .into_iter()
         .filter_map(|(index, end_mj)| {
-            start_by_index.get(&index).map(|&start_mj| DeviceEnergy {
-                device_index: index,
-                energy_millijoules: end_mj.saturating_sub(start_mj),
-                source: EnergySource::Counter,
-            })
+            start_by_index
+                .get(&index)
+                .and_then(|&start_mj| end_mj.checked_sub(start_mj))
+                .map(|energy_millijoules| DeviceEnergy {
+                    device_index: index,
+                    energy_millijoules,
+                    source: EnergySource::Counter,
+                })
         })
         .collect();
     energy.sort_by_key(|e| e.device_index);
@@ -288,12 +294,27 @@ mod tests {
     }
 
     #[test]
-    fn energy_delta_saturates_on_counter_reset() {
-        // Driver reload mid-window: end < start. Must yield 0, not wrap.
+    fn energy_delta_omits_a_device_whose_counter_reset() {
+        // Driver reload mid-window: end < start. No trustworthy delta, so no
+        // entry: not 0, which is-report would sum as counter-grade energy,
+        // and not a u64 wrap. With no device left the result is None, and
+        // the report falls back to the integrated estimate.
         let start = vec![(0, 90_000)];
         let end = vec![(0, 10_000)];
-        let got = compute_energy_delta(start, end).expect("some energy");
-        assert_eq!(got[0].energy_millijoules, 0);
+        assert!(compute_energy_delta(start, end).is_none());
+    }
+
+    #[test]
+    fn energy_delta_keeps_the_devices_whose_counter_did_not_reset() {
+        // Device 0 reset, device 1 advanced: only device 1 reports, so
+        // is-report integrates device 0's power and marks the aggregate
+        // IntegratedFallback instead of Counter.
+        let start = vec![(0, 90_000), (1, 2_000)];
+        let end = vec![(0, 10_000), (1, 9_000)];
+        let got = compute_energy_delta(start, end).expect("device 1 has a delta");
+        assert_eq!(got.len(), 1);
+        assert_eq!(got[0].device_index, 1);
+        assert_eq!(got[0].energy_millijoules, 7_000);
     }
 
     #[test]

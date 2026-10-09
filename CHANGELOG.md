@@ -114,6 +114,23 @@ run that produced it.
   `vllm:lora_requests_info` is what made this visible: it joins adapter
   names into one comma-separated value.
 
+- **A GPU whose energy counter reset mid-window no longer reports zero
+  energy as a counter reading.** A driver reload resets the NVML counter
+  (`nvmlDeviceGetTotalEnergyConsumption`, ADR-010), so the end snapshot is
+  lower than the start. `compute_energy_delta` saturated that delta to 0
+  and recorded it with source `Counter`. Its comment called the zero "no
+  valid measurement", but is-report summed it into the aggregate as energy
+  the device did not use, and kept the aggregate marked `Counter` because
+  every contribution said so. With one GPU the window reported zero energy
+  and no efficiency, since `derive_efficiency` returns nothing for zero.
+  With several, the aggregate left that device out and tokens per joule
+  came out overstated, both at counter grade. The device is now omitted,
+  as a device whose counter read failed already was: is-report integrates
+  its power samples and marks the aggregate `IntegratedFallback`, and with
+  no device left the window falls back to the integrated estimate, the
+  fallback ADR-010 prescribes. The test that pinned the zero is replaced
+  by two that fail against it.
+
 ### Documentation
 
 - **ADR-017: active LoRA adapters as report provenance.** Decided, not
