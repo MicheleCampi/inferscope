@@ -204,7 +204,8 @@ start followed a RunPod pod resume from pause.
 
 Not load-bearing for any published claim — the article covers request-path
 latency, and this is init. Recorded because it touches the cold-start work
-(vllm-coldstart-probe measured ~18 s cold start) where a 3.5× swing in init
+(vllm-coldstart-probe records vLLM engine construction times in
+analysis/CAPTURES.md), where a 3.5× swing in init
 time at fixed configuration would matter to placement assumptions. Measuring
 it would need a GPU session with a timer around both calls, and a way to
 reproduce the resume.
