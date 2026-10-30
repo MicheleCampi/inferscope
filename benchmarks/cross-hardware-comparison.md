@@ -1,6 +1,6 @@
 # Cross-Hardware Comparison
 
-The same inferscope binary run against the same llama.cpp build, the same Qwen 2.5 family models, on three different NVIDIA GPU classes. Numbers come directly from inferscope's JSON output (aggregate metrics) and from the per-run summary report (per-device breakdowns). All raw JSON and context files are preserved in the validation archive on the development VM and can be re-published on request.
+The same inferscope binary run against the same llama.cpp build, the same Qwen 2.5 family models, on three different NVIDIA GPU classes. Numbers come directly from inferscope's JSON output (aggregate metrics) and from the per-run summary report (per-device breakdowns). The raw JSON and context files are published in [`raw/`](raw/): [L4](raw/l4-2026-05-20/), [H100](raw/h100-2026-05-22/) and [4x A40](raw/multi-device-2026-05-23/), with the SHA-256 of each source archive.
 
 **inferscope versions**: v0.2.0 (L4 runs, 20 May 2026), v0.2.1 (H100 + 4×A40 runs, 22–23 May 2026).
 **llama.cpp version**: build `b9165` (commit `769cc93`).

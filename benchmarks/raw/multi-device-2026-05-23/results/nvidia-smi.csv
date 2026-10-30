@@ -1,0 +1,5 @@
+index, name, memory.total [MiB], driver_version, compute_cap, power.max_limit [W]
+0, NVIDIA A40, 46068 MiB, 565.57.01, 8.6, 300.00 W
+1, NVIDIA A40, 46068 MiB, 565.57.01, 8.6, 300.00 W
+2, NVIDIA A40, 46068 MiB, 565.57.01, 8.6, 300.00 W
+3, NVIDIA A40, 46068 MiB, 565.57.01, 8.6, 300.00 W

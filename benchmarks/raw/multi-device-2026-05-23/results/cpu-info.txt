@@ -1,0 +1,13 @@
+CPU(s):                               96
+On-line CPU(s) list:                  0-95
+Vendor ID:                            GenuineIntel
+Model name:                           Intel(R) Xeon(R) Gold 6342 CPU @ 2.80GHz
+Thread(s) per core:                   2
+Core(s) per socket:                   24
+Socket(s):                            2
+CPU max MHz:                          3500.0000
+CPU min MHz:                          800.0000
+NUMA node0 CPU(s):                    0-23,48-71
+               total        used        free      shared  buff/cache   available
+Mem:           503Gi        40Gi       189Gi       1.4Gi       273Gi       456Gi
+Swap:             0B          0B          0B

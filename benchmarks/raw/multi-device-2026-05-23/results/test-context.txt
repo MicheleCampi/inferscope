@@ -1,0 +1,2 @@
+Configuration context: 4xA40 RunPod, llama.cpp b9165 tensor-split, inferscope v0.2.1 with --include-descendants
+TP=2 used CUDA_VISIBLE_DEVICES=0,1 (same-socket PXB), TP=4 used all 4 (cross-socket SYS for GPU 0/1 ↔ GPU 2/3)

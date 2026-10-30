@@ -1,0 +1,2 @@
+index, name, memory.total [MiB], driver_version, compute_cap, power.max_limit [W]
+0, NVIDIA H100 80GB HBM3, 81559 MiB, 580.126.09, 9.0, 700.00 W

@@ -165,4 +165,4 @@ This is the "data captured is fine; question is which slice the report makes vis
    ```
 7. Inspect either the plain-text summary (per-device by default) or the JSON aggregate. To reproduce per-device numbers from the JSON: group `gpu_timeline.samples` by `device_index` and compute max/mean/etc. per group.
 
-The full archive of the May 23 run — JSON, summary, topology, nvidia-smi output, llama-server log, kernel info — is preserved on the validation VM and can be published into [`benchmarks/raw/multi-device-2026-05-23/`](raw/) on request.
+The full archive of the May 23 run — JSON, summary, topology, nvidia-smi output, llama-server log, kernel info — is published in [`benchmarks/raw/multi-device-2026-05-23/`](raw/multi-device-2026-05-23/).

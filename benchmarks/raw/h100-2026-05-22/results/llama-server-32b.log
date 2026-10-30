@@ -1,0 +1,55 @@
+0.00.378.473 I log_info: verbosity = 3 (adjust with the `-lv N` CLI arg)
+0.00.378.478 I device_info:
+0.00.543.091 I   - CUDA0   : NVIDIA H100 80GB HBM3 (81079 MiB, 80552 MiB free)
+0.00.543.108 I   - CPU     : Intel(R) Xeon(R) Platinum 8480+ (2063697 MiB, 2063697 MiB free)
+0.00.543.241 I system_info: n_threads = 112 (n_threads_batch = 112) / 224 | CUDA : ARCHS = 900 | USE_GRAPHS = 1 | PEER_MAX_BATCH_SIZE = 128 | CPU : SSE3 = 1 | SSSE3 = 1 | AVX = 1 | AVX_VNNI = 1 | AVX2 = 1 | F16C = 1 | FMA = 1 | BMI2 = 1 | AVX512 = 1 | AVX512_VBMI = 1 | AVX512_VNNI = 1 | AVX512_BF16 = 1 | AMX_INT8 = 1 | LLAMAFILE = 1 | OPENMP = 1 | REPACK = 1 | 
+0.00.543.246 I srv          main: n_parallel is set to auto, using n_parallel = 4 and kv_unified = true
+0.00.543.367 I srv          init: running without SSL
+0.00.543.396 I srv          init: using 223 threads for HTTP server
+0.00.543.521 I srv         start: binding port with default address family
+0.00.544.833 I srv          main: loading model
+0.00.544.841 I srv    load_model: loading model '/workspace/h100-validation/models/qwen2.5-32b-instruct-q4_k_m-00001-of-00005.gguf'
+0.00.544.906 I common_init_result: fitting params to device memory ...
+0.00.544.909 I common_init_result: (for bugs during this step try to reproduce them with -fit off, or provide --verbose logs if the bug only occurs with -fit on)
+0.01.028.286 W load: control-looking token: 128247 '</s>' was not control-type; this is probably a bug in the model. its type will be overridden
+0.06.089.640 W llama_context: n_ctx_seq (4096) < n_ctx_train (131072) -- the full capacity of the model will not be utilized
+0.06.113.780 W common_init_from_params: warming up the model with an empty run - please wait ... (--no-warmup to disable)
+0.06.155.530 I srv    load_model: initializing slots, n_slots = 4
+0.06.185.590 W common_speculative_init: no implementations specified for speculative decoding
+0.06.185.602 I slot   load_model: id  0 | task -1 | new slot, n_ctx = 4096
+0.06.185.606 I slot   load_model: id  1 | task -1 | new slot, n_ctx = 4096
+0.06.185.607 I slot   load_model: id  2 | task -1 | new slot, n_ctx = 4096
+0.06.185.607 I slot   load_model: id  3 | task -1 | new slot, n_ctx = 4096
+0.06.185.699 I srv    load_model: prompt cache is enabled, size limit: 8192 MiB
+0.06.185.703 I srv    load_model: use `--cache-ram 0` to disable the prompt cache
+0.06.185.704 I srv    load_model: for more info see https://github.com/ggml-org/llama.cpp/pull/16391
+0.06.185.770 I srv          init: idle slots will be saved to prompt cache and cleared upon starting a new task
+0.06.190.884 I init: chat template, example_format: '<|im_start|>system
+You are a helpful assistant<|im_end|>
+<|im_start|>user
+Hello<|im_end|>
+<|im_start|>assistant
+Hi there<|im_end|>
+<|im_start|>user
+How are you?<|im_end|>
+<|im_start|>assistant
+'
+0.06.193.813 I srv          init: init: chat template, thinking = 0
+0.06.193.842 I srv          main: model loaded
+0.06.193.849 I srv          main: server is listening on http://127.0.0.1:8080
+0.06.193.854 I srv  update_slots: all slots are idle
+2.53.635.262 I srv  params_from_: Chat format: peg-native
+2.53.635.520 I slot get_availabl: id  3 | task -1 | selected slot by LRU, t_last = -1
+2.53.635.528 I srv  get_availabl: updating prompt cache
+2.53.635.541 I srv          load:  - looking for better prompt, base f_keep = -1.000, sim = 0.000
+2.53.635.554 I srv        update:  - cache state: 0 prompts, 0.000 MiB (limits: 8192.000 MiB, 4096 tokens, 8589934592 est)
+2.53.635.560 I srv  get_availabl: prompt cache update took 0.03 ms
+2.53.635.780 I slot launch_slot_: id  3 | task 0 | processing task, is_child = 0
+2.55.146.891 I slot print_timing: id  3 | task 0 | n_decoded =    100, tg =  69.43 t/s
+2.56.950.958 I slot print_timing: id  3 | task 0 | 
+prompt eval time =      70.70 ms /    44 tokens (    1.61 ms per token,   622.34 tokens per second)
+       eval time =    3244.42 ms /   224 tokens (   14.48 ms per token,    69.04 tokens per second)
+      total time =    3315.12 ms /   268 tokens
+2.56.951.121 I slot      release: id  3 | task 0 | stop processing: n_tokens = 267, truncated = 0
+2.56.951.132 I srv  update_slots: all slots are idle
+8.12.881.881 I srv    operator(): operator(): cleaning up before exit...

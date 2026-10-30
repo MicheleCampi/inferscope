@@ -1,0 +1,2 @@
+Configuration context: 1xH100 SXM RunPod, vLLM 0.21 single-GPU, Qwen 2.5 7B AWQ (awq_marlin kernel), VLLM_USE_DEEP_GEMM=0 to skip FP8 warmup
+Run cold completed 23 May 22:33 before pod pause; warm run target after vLLM restart

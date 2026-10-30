@@ -89,6 +89,9 @@ run that produced it.
 
 ### Fixed
 
+- Benchmarks: the raw data behind the write-ups, promised "on request", is published
+  in `benchmarks/raw/` (L4, H100, 4x A40, vLLM on H100), extracted as recorded, with the
+  SHA-256 of each source archive.
 - **`--metrics-endpoint` now requires `--model`.** The scrape selects its
   series by the `model_name` label, so an endpoint given without a model
   matched nothing and the report carried no engine metrics — silently, with

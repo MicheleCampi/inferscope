@@ -1,0 +1,28 @@
+=== H100 Fase Y1 — Qwen 32B Q4 with --include-descendants ===
+
+Timing:
+  TTFT: 87.49 ms
+  Total latency: 3331.64 ms
+  tokens/s: 68.74
+  token count: 223
+  inter-token p50: 14.44 ms
+  inter-token p95: 14.69 ms
+  inter-token p99: 19.95 ms
+  inter-token max: 20.24 ms
+
+Resource (aggregated wrapper + worker):
+  sample count: 68
+  RSS peak: 858.07 MiB
+  RSS mean: 856.78 MiB
+  Threads peak: 229
+  CPU mean: 98.81%
+
+GPU (NVML):
+  sample count: 68
+  VRAM used peak: 21.44 GB (25.1%)
+  VRAM used mean: 21.44 GB
+  SM utilization peak: 97%
+  SM utilization mean: 88%
+  Power peak: 529.4 W
+  Power mean: 439.0 W
+  Temp peak: 44°C

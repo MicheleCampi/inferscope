@@ -1,0 +1,22 @@
+=== H100 Fase A1 — inferscope --pid 9865 (WRONG: bash wrapper) ===
+
+Timing (uncorrupted by PID bug):
+  TTFT: 54.43 ms
+  Total latency: 613.19 ms
+  tokens/s: 227.35
+  inter-token p50: 4.29 ms
+  inter-token p95: 4.51 ms
+  inter-token p99: 8.41 ms
+
+Resource (CORRUPTED by wrapper-PID bug):
+  RSS: 2.25 MiB  (real worker: 703 MiB — 300x undercount)
+  Threads: 1 (real worker: 228 — 228x undercount)
+  CPU mean: 0.0%
+
+GPU (uncorrupted, NVML reads device directly):
+  VRAM used: 5.56 GB / 85.52 GB (6.5%)
+  SM utilization peak: 90%
+  SM utilization mean: 40%
+  Power peak: 279.9 W
+  Power mean: 178.0 W
+  Temp peak: 40°C

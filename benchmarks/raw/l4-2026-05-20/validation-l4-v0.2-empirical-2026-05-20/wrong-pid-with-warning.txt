@@ -1,0 +1,24 @@
+inferscope: warning: monitored PID looks idle across all 6 samples (RSS < 10 MiB, 1 thread, 0 CPU jiffies). The --pid argument may point to a wrapper shell rather than the actual workload. Verify with: cat /proc/<pid>/status | grep -E 'VmRSS|Threads'.
+Probe summary
+  Tokens generated      80
+  Time to first token   14 ms
+  Generation rate       381.2 tokens/s
+  Total latency         222 ms
+
+Inter-token latency (from 79 intervals)
+  mean       2 ms      max        2 ms
+  p50        2 ms      p95        2 ms
+  p99        2 ms
+
+Process resource usage (6 samples)
+  RSS                peak 2 MiB  mean 2 MiB
+                     min  2 MiB  final 2 MiB
+  CPU utilization    mean 0%
+  Threads            1 throughout
+
+GPU resource usage (6 samples)
+  VRAM               peak 1.25 GiB  mean 1.25 GiB
+                     min  1.25 GiB  total 22.49 GiB
+  SM utilization     peak 91%  mean 45%  min 0%
+  Temperature        peak 45 C
+  Power draw         peak 41.1 W  mean 40.1 W

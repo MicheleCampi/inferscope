@@ -1,0 +1,4 @@
+Test 1: PID 2252 (bash wrapper, warning expected):
+  Name:	bash VmRSS:	    2144 kB Threads:	1 
+Test 2: PID 2254 (real llama-server, no warning):
+  Name:	llama-server VmRSS:	  523804 kB Threads:	52 

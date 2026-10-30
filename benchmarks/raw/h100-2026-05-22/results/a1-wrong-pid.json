@@ -1,0 +1,791 @@
+{
+  "request_timing": {
+    "tokens": [
+      {
+        "index": 0,
+        "elapsed_ns": 54428029
+      },
+      {
+        "index": 1,
+        "elapsed_ns": 65219531
+      },
+      {
+        "index": 2,
+        "elapsed_ns": 73627281
+      },
+      {
+        "index": 3,
+        "elapsed_ns": 78047189
+      },
+      {
+        "index": 4,
+        "elapsed_ns": 82385155
+      },
+      {
+        "index": 5,
+        "elapsed_ns": 86700895
+      },
+      {
+        "index": 6,
+        "elapsed_ns": 91000134
+      },
+      {
+        "index": 7,
+        "elapsed_ns": 95312402
+      },
+      {
+        "index": 8,
+        "elapsed_ns": 99609756
+      },
+      {
+        "index": 9,
+        "elapsed_ns": 103882063
+      },
+      {
+        "index": 10,
+        "elapsed_ns": 108174593
+      },
+      {
+        "index": 11,
+        "elapsed_ns": 112454348
+      },
+      {
+        "index": 12,
+        "elapsed_ns": 116760371
+      },
+      {
+        "index": 13,
+        "elapsed_ns": 121046022
+      },
+      {
+        "index": 14,
+        "elapsed_ns": 125324711
+      },
+      {
+        "index": 15,
+        "elapsed_ns": 129632390
+      },
+      {
+        "index": 16,
+        "elapsed_ns": 133921076
+      },
+      {
+        "index": 17,
+        "elapsed_ns": 138188240
+      },
+      {
+        "index": 18,
+        "elapsed_ns": 142462351
+      },
+      {
+        "index": 19,
+        "elapsed_ns": 146736976
+      },
+      {
+        "index": 20,
+        "elapsed_ns": 151007560
+      },
+      {
+        "index": 21,
+        "elapsed_ns": 155335970
+      },
+      {
+        "index": 22,
+        "elapsed_ns": 159574475
+      },
+      {
+        "index": 23,
+        "elapsed_ns": 163908869
+      },
+      {
+        "index": 24,
+        "elapsed_ns": 168231958
+      },
+      {
+        "index": 25,
+        "elapsed_ns": 172561507
+      },
+      {
+        "index": 26,
+        "elapsed_ns": 176859002
+      },
+      {
+        "index": 27,
+        "elapsed_ns": 181161680
+      },
+      {
+        "index": 28,
+        "elapsed_ns": 185452011
+      },
+      {
+        "index": 29,
+        "elapsed_ns": 189730905
+      },
+      {
+        "index": 30,
+        "elapsed_ns": 194015304
+      },
+      {
+        "index": 31,
+        "elapsed_ns": 198307650
+      },
+      {
+        "index": 32,
+        "elapsed_ns": 202585325
+      },
+      {
+        "index": 33,
+        "elapsed_ns": 206853844
+      },
+      {
+        "index": 34,
+        "elapsed_ns": 211138805
+      },
+      {
+        "index": 35,
+        "elapsed_ns": 215412269
+      },
+      {
+        "index": 36,
+        "elapsed_ns": 219691319
+      },
+      {
+        "index": 37,
+        "elapsed_ns": 223974034
+      },
+      {
+        "index": 38,
+        "elapsed_ns": 228268303
+      },
+      {
+        "index": 39,
+        "elapsed_ns": 233516154
+      },
+      {
+        "index": 40,
+        "elapsed_ns": 238621038
+      },
+      {
+        "index": 41,
+        "elapsed_ns": 243445097
+      },
+      {
+        "index": 42,
+        "elapsed_ns": 248054845
+      },
+      {
+        "index": 43,
+        "elapsed_ns": 252566435
+      },
+      {
+        "index": 44,
+        "elapsed_ns": 256983402
+      },
+      {
+        "index": 45,
+        "elapsed_ns": 261341825
+      },
+      {
+        "index": 46,
+        "elapsed_ns": 265625841
+      },
+      {
+        "index": 47,
+        "elapsed_ns": 270020797
+      },
+      {
+        "index": 48,
+        "elapsed_ns": 274325008
+      },
+      {
+        "index": 49,
+        "elapsed_ns": 278586292
+      },
+      {
+        "index": 50,
+        "elapsed_ns": 282922182
+      },
+      {
+        "index": 51,
+        "elapsed_ns": 287163251
+      },
+      {
+        "index": 52,
+        "elapsed_ns": 291450247
+      },
+      {
+        "index": 53,
+        "elapsed_ns": 295715646
+      },
+      {
+        "index": 54,
+        "elapsed_ns": 300003342
+      },
+      {
+        "index": 55,
+        "elapsed_ns": 304301386
+      },
+      {
+        "index": 56,
+        "elapsed_ns": 308599205
+      },
+      {
+        "index": 57,
+        "elapsed_ns": 312883476
+      },
+      {
+        "index": 58,
+        "elapsed_ns": 317155771
+      },
+      {
+        "index": 59,
+        "elapsed_ns": 321450709
+      },
+      {
+        "index": 60,
+        "elapsed_ns": 325723280
+      },
+      {
+        "index": 61,
+        "elapsed_ns": 329989075
+      },
+      {
+        "index": 62,
+        "elapsed_ns": 334264949
+      },
+      {
+        "index": 63,
+        "elapsed_ns": 338539129
+      },
+      {
+        "index": 64,
+        "elapsed_ns": 342832360
+      },
+      {
+        "index": 65,
+        "elapsed_ns": 347139368
+      },
+      {
+        "index": 66,
+        "elapsed_ns": 351436263
+      },
+      {
+        "index": 67,
+        "elapsed_ns": 355729228
+      },
+      {
+        "index": 68,
+        "elapsed_ns": 360063111
+      },
+      {
+        "index": 69,
+        "elapsed_ns": 364393019
+      },
+      {
+        "index": 70,
+        "elapsed_ns": 368698584
+      },
+      {
+        "index": 71,
+        "elapsed_ns": 372998800
+      },
+      {
+        "index": 72,
+        "elapsed_ns": 377264830
+      },
+      {
+        "index": 73,
+        "elapsed_ns": 381543150
+      },
+      {
+        "index": 74,
+        "elapsed_ns": 385830514
+      },
+      {
+        "index": 75,
+        "elapsed_ns": 390107207
+      },
+      {
+        "index": 76,
+        "elapsed_ns": 394399704
+      },
+      {
+        "index": 77,
+        "elapsed_ns": 398708840
+      },
+      {
+        "index": 78,
+        "elapsed_ns": 403000719
+      },
+      {
+        "index": 79,
+        "elapsed_ns": 407280673
+      },
+      {
+        "index": 80,
+        "elapsed_ns": 411577006
+      },
+      {
+        "index": 81,
+        "elapsed_ns": 415855992
+      },
+      {
+        "index": 82,
+        "elapsed_ns": 420145811
+      },
+      {
+        "index": 83,
+        "elapsed_ns": 424446041
+      },
+      {
+        "index": 84,
+        "elapsed_ns": 428706506
+      },
+      {
+        "index": 85,
+        "elapsed_ns": 432982006
+      },
+      {
+        "index": 86,
+        "elapsed_ns": 437336309
+      },
+      {
+        "index": 87,
+        "elapsed_ns": 441561865
+      },
+      {
+        "index": 88,
+        "elapsed_ns": 445847325
+      },
+      {
+        "index": 89,
+        "elapsed_ns": 450140244
+      },
+      {
+        "index": 90,
+        "elapsed_ns": 454425660
+      },
+      {
+        "index": 91,
+        "elapsed_ns": 458703515
+      },
+      {
+        "index": 92,
+        "elapsed_ns": 463006329
+      },
+      {
+        "index": 93,
+        "elapsed_ns": 467293224
+      },
+      {
+        "index": 94,
+        "elapsed_ns": 471563698
+      },
+      {
+        "index": 95,
+        "elapsed_ns": 475832994
+      },
+      {
+        "index": 96,
+        "elapsed_ns": 480122213
+      },
+      {
+        "index": 97,
+        "elapsed_ns": 484404328
+      },
+      {
+        "index": 98,
+        "elapsed_ns": 488690007
+      },
+      {
+        "index": 99,
+        "elapsed_ns": 492971668
+      },
+      {
+        "index": 100,
+        "elapsed_ns": 497282276
+      },
+      {
+        "index": 101,
+        "elapsed_ns": 501565207
+      },
+      {
+        "index": 102,
+        "elapsed_ns": 505871425
+      },
+      {
+        "index": 103,
+        "elapsed_ns": 510144996
+      },
+      {
+        "index": 104,
+        "elapsed_ns": 514440242
+      },
+      {
+        "index": 105,
+        "elapsed_ns": 518708315
+      },
+      {
+        "index": 106,
+        "elapsed_ns": 522980371
+      },
+      {
+        "index": 107,
+        "elapsed_ns": 527266411
+      },
+      {
+        "index": 108,
+        "elapsed_ns": 531561525
+      },
+      {
+        "index": 109,
+        "elapsed_ns": 535858810
+      },
+      {
+        "index": 110,
+        "elapsed_ns": 540136155
+      },
+      {
+        "index": 111,
+        "elapsed_ns": 544441033
+      },
+      {
+        "index": 112,
+        "elapsed_ns": 548727778
+      },
+      {
+        "index": 113,
+        "elapsed_ns": 553028582
+      },
+      {
+        "index": 114,
+        "elapsed_ns": 557300882
+      },
+      {
+        "index": 115,
+        "elapsed_ns": 561581243
+      },
+      {
+        "index": 116,
+        "elapsed_ns": 565879873
+      },
+      {
+        "index": 117,
+        "elapsed_ns": 570147047
+      },
+      {
+        "index": 118,
+        "elapsed_ns": 574428177
+      },
+      {
+        "index": 119,
+        "elapsed_ns": 578724747
+      },
+      {
+        "index": 120,
+        "elapsed_ns": 583002887
+      },
+      {
+        "index": 121,
+        "elapsed_ns": 587340281
+      },
+      {
+        "index": 122,
+        "elapsed_ns": 591591260
+      },
+      {
+        "index": 123,
+        "elapsed_ns": 595888231
+      },
+      {
+        "index": 124,
+        "elapsed_ns": 600181869
+      },
+      {
+        "index": 125,
+        "elapsed_ns": 604462810
+      },
+      {
+        "index": 126,
+        "elapsed_ns": 608729624
+      },
+      {
+        "index": 127,
+        "elapsed_ns": 613035579
+      }
+    ],
+    "total_ns": 613193221
+  },
+  "resource_timeline": {
+    "samples": [
+      {
+        "elapsed_ns": 1194811,
+        "rss_bytes": 2355200,
+        "cpu_user_jiffies": 0,
+        "cpu_system_jiffies": 0,
+        "thread_count": 1
+      },
+      {
+        "elapsed_ns": 50999336,
+        "rss_bytes": 2355200,
+        "cpu_user_jiffies": 0,
+        "cpu_system_jiffies": 0,
+        "thread_count": 1
+      },
+      {
+        "elapsed_ns": 101148574,
+        "rss_bytes": 2355200,
+        "cpu_user_jiffies": 0,
+        "cpu_system_jiffies": 0,
+        "thread_count": 1
+      },
+      {
+        "elapsed_ns": 151032711,
+        "rss_bytes": 2355200,
+        "cpu_user_jiffies": 0,
+        "cpu_system_jiffies": 0,
+        "thread_count": 1
+      },
+      {
+        "elapsed_ns": 200276417,
+        "rss_bytes": 2355200,
+        "cpu_user_jiffies": 0,
+        "cpu_system_jiffies": 0,
+        "thread_count": 1
+      },
+      {
+        "elapsed_ns": 250805081,
+        "rss_bytes": 2355200,
+        "cpu_user_jiffies": 0,
+        "cpu_system_jiffies": 0,
+        "thread_count": 1
+      },
+      {
+        "elapsed_ns": 300914975,
+        "rss_bytes": 2355200,
+        "cpu_user_jiffies": 0,
+        "cpu_system_jiffies": 0,
+        "thread_count": 1
+      },
+      {
+        "elapsed_ns": 350402509,
+        "rss_bytes": 2355200,
+        "cpu_user_jiffies": 0,
+        "cpu_system_jiffies": 0,
+        "thread_count": 1
+      },
+      {
+        "elapsed_ns": 400633095,
+        "rss_bytes": 2355200,
+        "cpu_user_jiffies": 0,
+        "cpu_system_jiffies": 0,
+        "thread_count": 1
+      },
+      {
+        "elapsed_ns": 451183890,
+        "rss_bytes": 2355200,
+        "cpu_user_jiffies": 0,
+        "cpu_system_jiffies": 0,
+        "thread_count": 1
+      },
+      {
+        "elapsed_ns": 500353527,
+        "rss_bytes": 2355200,
+        "cpu_user_jiffies": 0,
+        "cpu_system_jiffies": 0,
+        "thread_count": 1
+      },
+      {
+        "elapsed_ns": 550766359,
+        "rss_bytes": 2355200,
+        "cpu_user_jiffies": 0,
+        "cpu_system_jiffies": 0,
+        "thread_count": 1
+      },
+      {
+        "elapsed_ns": 601203091,
+        "rss_bytes": 2355200,
+        "cpu_user_jiffies": 0,
+        "cpu_system_jiffies": 0,
+        "thread_count": 1
+      },
+      {
+        "elapsed_ns": 650371698,
+        "rss_bytes": 2355200,
+        "cpu_user_jiffies": 0,
+        "cpu_system_jiffies": 0,
+        "thread_count": 1
+      }
+    ],
+    "sample_period_ns": 50000000
+  },
+  "gpu_timeline": {
+    "samples": [
+      {
+        "elapsed_ns": 22733775,
+        "device_index": 0,
+        "memory_used_bytes": 5549981696,
+        "memory_total_bytes": 85520809984,
+        "utilization_percent": 0,
+        "temperature_celsius": 34,
+        "power_draw_milliwatts": 118865
+      },
+      {
+        "elapsed_ns": 73013889,
+        "device_index": 0,
+        "memory_used_bytes": 5549981696,
+        "memory_total_bytes": 85520809984,
+        "utilization_percent": 0,
+        "temperature_celsius": 34,
+        "power_draw_milliwatts": 118878
+      },
+      {
+        "elapsed_ns": 123085773,
+        "device_index": 0,
+        "memory_used_bytes": 5556273152,
+        "memory_total_bytes": 85520809984,
+        "utilization_percent": 0,
+        "temperature_celsius": 34,
+        "power_draw_milliwatts": 118878
+      },
+      {
+        "elapsed_ns": 172529879,
+        "device_index": 0,
+        "memory_used_bytes": 5556273152,
+        "memory_total_bytes": 85520809984,
+        "utilization_percent": 0,
+        "temperature_celsius": 34,
+        "power_draw_milliwatts": 123074
+      },
+      {
+        "elapsed_ns": 222650716,
+        "device_index": 0,
+        "memory_used_bytes": 5556273152,
+        "memory_total_bytes": 85520809984,
+        "utilization_percent": 0,
+        "temperature_celsius": 34,
+        "power_draw_milliwatts": 123074
+      },
+      {
+        "elapsed_ns": 273226565,
+        "device_index": 0,
+        "memory_used_bytes": 5556273152,
+        "memory_total_bytes": 85520809984,
+        "utilization_percent": 31,
+        "temperature_celsius": 37,
+        "power_draw_milliwatts": 155231
+      },
+      {
+        "elapsed_ns": 323210490,
+        "device_index": 0,
+        "memory_used_bytes": 5556273152,
+        "memory_total_bytes": 85520809984,
+        "utilization_percent": 31,
+        "temperature_celsius": 37,
+        "power_draw_milliwatts": 155231
+      },
+      {
+        "elapsed_ns": 372943337,
+        "device_index": 0,
+        "memory_used_bytes": 5556273152,
+        "memory_total_bytes": 85520809984,
+        "utilization_percent": 31,
+        "temperature_celsius": 39,
+        "power_draw_milliwatts": 184975
+      },
+      {
+        "elapsed_ns": 423079724,
+        "device_index": 0,
+        "memory_used_bytes": 5556273152,
+        "memory_total_bytes": 85520809984,
+        "utilization_percent": 31,
+        "temperature_celsius": 39,
+        "power_draw_milliwatts": 184975
+      },
+      {
+        "elapsed_ns": 472644283,
+        "device_index": 0,
+        "memory_used_bytes": 5556273152,
+        "memory_total_bytes": 85520809984,
+        "utilization_percent": 87,
+        "temperature_celsius": 40,
+        "power_draw_milliwatts": 215733
+      },
+      {
+        "elapsed_ns": 523071819,
+        "device_index": 0,
+        "memory_used_bytes": 5556273152,
+        "memory_total_bytes": 85520809984,
+        "utilization_percent": 87,
+        "temperature_celsius": 40,
+        "power_draw_milliwatts": 215733
+      },
+      {
+        "elapsed_ns": 572210752,
+        "device_index": 0,
+        "memory_used_bytes": 5556273152,
+        "memory_total_bytes": 85520809984,
+        "utilization_percent": 87,
+        "temperature_celsius": 40,
+        "power_draw_milliwatts": 248866
+      },
+      {
+        "elapsed_ns": 622670793,
+        "device_index": 0,
+        "memory_used_bytes": 5556273152,
+        "memory_total_bytes": 85520809984,
+        "utilization_percent": 87,
+        "temperature_celsius": 40,
+        "power_draw_milliwatts": 248866
+      },
+      {
+        "elapsed_ns": 673105210,
+        "device_index": 0,
+        "memory_used_bytes": 5556273152,
+        "memory_total_bytes": 85520809984,
+        "utilization_percent": 90,
+        "temperature_celsius": 40,
+        "power_draw_milliwatts": 279901
+      }
+    ],
+    "sample_period_ns": 50000000
+  },
+  "timing": {
+    "token_count": 128,
+    "ttft_ns": 54428029,
+    "total_latency_ns": 613193221,
+    "tokens_per_second": 227.35102667337742,
+    "inter_token_latency": {
+      "count": 127,
+      "mean_ns": 4398484,
+      "p50_ns": 4289219,
+      "p95_ns": 4511590,
+      "p99_ns": 8407750,
+      "max_ns": 10791502
+    }
+  },
+  "resource": {
+    "sample_count": 14,
+    "rss_min_bytes": 2355200,
+    "rss_max_bytes": 2355200,
+    "rss_mean_bytes": 2355200,
+    "rss_final_bytes": 2355200,
+    "cpu_mean_percent": 0.0,
+    "thread_min": 1,
+    "thread_max": 1
+  },
+  "gpu": {
+    "sample_count": 14,
+    "device_count": 1,
+    "memory_used_min_bytes": 5549981696,
+    "memory_used_max_bytes": 5556273152,
+    "memory_used_mean_bytes": 5555374372,
+    "memory_total_bytes": 85520809984,
+    "utilization_min_percent": 0,
+    "utilization_max_percent": 90,
+    "utilization_mean_percent": 40,
+    "temperature_max_celsius": 40,
+    "power_max_milliwatts": 279901,
+    "power_mean_milliwatts": 178020
+  }
+}

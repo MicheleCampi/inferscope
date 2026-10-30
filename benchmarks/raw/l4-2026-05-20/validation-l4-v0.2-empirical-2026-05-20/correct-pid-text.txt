@@ -1,0 +1,23 @@
+Probe summary
+  Tokens generated      80
+  Time to first token   19 ms
+  Generation rate       370.5 tokens/s
+  Total latency         232 ms
+
+Inter-token latency (from 79 intervals)
+  mean       2 ms      max        4 ms
+  p50        2 ms      p95        2 ms
+  p99        4 ms
+
+Process resource usage (7 samples)
+  RSS                peak 511 MiB  mean 510 MiB
+                     min  509 MiB  final 511 MiB
+  CPU utilization    mean 73%
+  Threads            52 throughout
+
+GPU resource usage (7 samples)
+  VRAM               peak 1.25 GiB  mean 1.25 GiB
+                     min  1.25 GiB  total 22.49 GiB
+  SM utilization     peak 81%  mean 23%  min 0%
+  Temperature        peak 44 C
+  Power draw         peak 33.1 W  mean 31.6 W

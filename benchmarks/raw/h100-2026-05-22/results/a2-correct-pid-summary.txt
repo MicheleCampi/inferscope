@@ -1,0 +1,23 @@
+=== H100 Fase A2 — inferscope --pid 9867 (CORRECT: real llama-server) ===
+
+Timing:
+  TTFT: 39.71 ms
+  Total latency: 591.11 ms
+  tokens/s: 230.38
+  inter-token p50: 4.28 ms
+  inter-token p95: 4.35 ms
+  inter-token p99: 5.30 ms
+
+Resource (UNCORRUPTED — correct PID):
+  RSS peak: 719.98 MiB
+  RSS mean: 718.61 MiB
+  Threads peak: 228
+  CPU mean: 90.72%
+
+GPU (NVML):
+  VRAM used: 5.56 GB / 85.52 GB (6.5%)
+  SM utilization peak: 90%
+  SM utilization mean: 46%
+  Power peak: 262.3 W
+  Power mean: 169.8 W
+  Temp peak: 40°C

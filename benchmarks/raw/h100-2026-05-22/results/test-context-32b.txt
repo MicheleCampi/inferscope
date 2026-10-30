@@ -1,0 +1,9 @@
+=== H100 wrapper-PID pattern verification (Qwen 32B, 2026-05-22) ===
+
+Wrapper PID 10437 (bash):
+  Name: bash VmRSS: 2404 kB Threads: 1
+
+Worker PID 10439 (llama-server, Qwen 32B Q4_K_M):
+  Name: llama-server VmRSS: 851292 kB Threads: 228
+
+VRAM at load: 20441 MiB / 81559 MiB (25.1%)

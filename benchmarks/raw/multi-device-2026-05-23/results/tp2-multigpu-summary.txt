@@ -1,0 +1,19 @@
+=== TP=2 same-socket ===
+
+Timing:
+  TTFT: 65.65 ms
+  tokens/s: 106.33
+  inter-token p50: 9.31 ms
+  inter-token p95: 9.71 ms
+  inter-token p99: 15.99 ms
+
+Resource (aggregated):
+  RSS peak: 765.39 MiB
+  Threads peak: 102
+  CPU mean: 94.60%
+
+Per-device:
+  GPU 0: VRAM 2.56GB | SM mean 33.1% | power mean 148.0W | temp max 52°C
+  GPU 1: VRAM 2.87GB | SM mean 37.5% | power mean 152.5W | temp max 53°C
+  GPU 2: VRAM 0.00GB | SM mean 0.0% | power mean 34.1W | temp max 33°C
+  GPU 3: VRAM 0.00GB | SM mean 0.0% | power mean 32.3W | temp max 34°C

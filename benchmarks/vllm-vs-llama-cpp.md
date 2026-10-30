@@ -137,4 +137,4 @@ This is the engine-agnostic claim made concrete: the binary worked the first tim
 
 To reproduce the warm-restart outlier specifically: do a single profile run, then stop the vLLM server (`kill $WRAPPER_PID`), restart it, then immediately profile again. The first post-restart run will show TTFT 500–800 ms; the second will be back to ~20 ms.
 
-The vLLM runs preserved in the validation archive on the development VM include cpu-info, nvidia-smi.csv, the inferscope JSON for each of the three runs, and a tarball of the full session. These can be published into [`benchmarks/raw/vllm-2026-05-24/`](raw/) on request.
+The archived vLLM runs include cpu-info, nvidia-smi.csv, the inferscope JSON for each of the three runs and the server logs. They are published in [`benchmarks/raw/vllm-2026-05-24/`](raw/vllm-2026-05-24/).

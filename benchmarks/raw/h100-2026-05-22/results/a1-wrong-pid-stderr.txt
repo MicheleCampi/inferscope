@@ -1,0 +1,1 @@
+inferscope: warning: monitored PID looks idle across all 14 samples (RSS < 10 MiB, 1 thread, 0 CPU jiffies). The --pid argument may point to a wrapper shell rather than the actual workload. Verify with: cat /proc/<pid>/status | grep -E 'VmRSS|Threads'.

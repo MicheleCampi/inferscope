@@ -1,0 +1,12 @@
+=== H100 wrapper-PID pattern verification (2026-05-22) ===
+
+Test 1: PID 9865 (bash wrapper, warning expected with vanilla v0.2.0 sampling):
+  Name: bash VmRSS:         2300 kB Threads:    1
+
+Test 2: PID 9867 (real llama-server, GPU-loaded):
+  Name: llama-server VmRSS:       703592 kB Threads:    228
+
+Wrapper-to-worker RSS ratio: 306x
+Wrapper-to-worker thread ratio: 228x
+
+Children of wrapper, verified via /proc/9865/task/9865/children: 9867

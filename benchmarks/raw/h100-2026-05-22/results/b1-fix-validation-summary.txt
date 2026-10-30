@@ -1,0 +1,22 @@
+=== H100 Fase B1 — inferscope --pid 9865 --include-descendants (FIX VALIDATION) ===
+
+Timing:
+  TTFT: 25.49 ms
+  Total latency: 581.04 ms
+  tokens/s: 228.66
+  inter-token p50: 4.28 ms
+  inter-token p95: 5.20 ms
+  inter-token p99: 5.50 ms
+
+Resource (AGGREGATED — parent 9865 + child 9867):
+  RSS peak: 722.41 MiB
+  RSS mean: 722.38 MiB
+  Threads peak: 229
+  CPU mean: 90.77%
+
+GPU (NVML):
+  VRAM peak: 5.56 GB
+  SM utilization peak: 90%
+  SM utilization mean: 48%
+  Power peak: 272.6 W
+  Power mean: 177.2 W
