@@ -21,8 +21,9 @@ llama.cpp's server, mistral.rs, vLLM, Ollama, TGI — is a target.
 
 ## Status
 
-**v0.5.0 released.** The profiling stack is stable across CPU and
-NVIDIA GPU. GPU support is NVIDIA-only today; all GPU and energy
+**v0.5.0 released (2026-07-29).** Pre-1.0: the report schema still
+changes between releases (see [`CHANGELOG.md`](CHANGELOG.md)). It runs
+on CPU and NVIDIA GPU. GPU support is NVIDIA-only today; all GPU and energy
 features are gated behind the `gpu-nvidia` feature flag.
 
 - **CPU foundation** (v0.1): token timing capture, `/proc`-based
@@ -80,7 +81,7 @@ features are gated behind the `gpu-nvidia` feature flag.
   pinned by a test that fails if the old form comes back. vLLM was
   checked for the same defect at source and does not have it: its
   counters carry no label the schema does not already select on.
-- **Speculative decoding** (ADR-016): the three vLLM speculative
+- **Speculative decoding** (ADR-016, on `main`, not yet tagged): the three vLLM speculative
   counters on the same clock as the energy sampler, so what rejected
   drafts cost can be read in joules rather than inferred from an
   acceptance rate. Measured on an H100 PCIe on 2026-09-05, with
@@ -370,6 +371,13 @@ Released — see [`CHANGELOG.md`](CHANGELOG.md) for the detail:
   on main but never been tagged. The OTLP export was tagged here too,
   but did not compile under its own feature; fixed on 2026-07-29 and
   now covered by an `all-features` CI job.
+- **v0.5.0** (July 2026) — multi-engine metric parsing: SGLang read
+  alongside vLLM, with `--engine` mandatory when a metrics endpoint is
+  scraped ([ADR-014](docs/adr/014-multi-engine-metric-schema.md)).
+
+On `main`, not yet tagged: speculative-decoding counters on the energy
+clock (ADR-016), LoRA adapter provenance in `--sample-only` (ADR-017),
+the cost-attribution design (ADR-015), and report schema version 2.
 
 Not planned: AMD GPU sampling via `amd-smi` was listed here for
 two releases and never started — it is off the roadmap rather
