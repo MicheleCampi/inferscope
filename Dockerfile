@@ -14,7 +14,7 @@ COPY . .
 # Build release binary with GPU support
 RUN cargo build --release --features gpu-nvidia
 # Stage 2: minimal runtime with CUDA + NVML
-FROM nvidia/cuda:13.0.2-runtime-ubuntu22.04
+FROM nvidia/cuda:13.5.0-runtime-ubuntu22.04
 # OCI image labels for discoverability
 LABEL org.opencontainers.image.title="inferscope"
 LABEL org.opencontainers.image.description="Rust profiler for LLM inference engines with NVIDIA GPU sampling"
